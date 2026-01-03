@@ -1,5 +1,4 @@
 import os
-import time
 import pytz
 import yfinance as yf
 import pandas as pd
@@ -11,7 +10,6 @@ from streamlit_autorefresh import st_autorefresh
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
-# Telegram (SAFE)
 from telegram import Bot
 from telegram.error import InvalidToken
 
@@ -19,20 +17,20 @@ from telegram.error import InvalidToken
 # STREAMLIT CONFIG
 # =====================================================
 st.set_page_config(
-    page_title="AI Stock Trading System",
+    page_title="AI Stock Trading System FINAL++",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-st.title("📊 AI Stock Trading System (FINAL)")
+st.title("📊 AI Stock Trading System (FINAL++)")
 
 # =====================================================
 # AUTO REFRESH (ANTI SLEEP)
 # =====================================================
-st_autorefresh(interval=60_000, key="refresh")  # 1 menit
+st_autorefresh(interval=60_000, key="refresh")
 
 # =====================================================
-# ENV (STREAMLIT SECRETS)
+# TELEGRAM (SAFE INIT)
 # =====================================================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -65,7 +63,7 @@ is_market_open = market_open <= now <= market_close
 # =====================================================
 # INPUT USER
 # =====================================================
-ticker = st.text_input("Kode Saham (IDX, contoh: BUMI.JK / GOTO.JK)", "GOTO.JK")
+ticker = st.text_input("Kode Saham IDX (.JK)", "GOTO.JK")
 period = st.selectbox("Periode Data", ["6mo", "1y", "2y"])
 
 modal = st.number_input("Modal (Rp)", value=10_000_000, step=1_000_000)
@@ -80,15 +78,30 @@ def load_data(ticker, period):
 
 df = load_data(ticker, period)
 
-if df.empty or len(df) < 60:
-    st.error("❌ Data tidak cukup")
+if df.empty or len(df) < 20:
+    st.error("❌ Data terlalu sedikit (<20 candle). Tidak bisa dianalisis.")
     st.stop()
+
+data_len = len(df)
+
+# =====================================================
+# ADAPTIVE MODE
+# =====================================================
+if data_len < 50:
+    ai_enabled = False
+    st.warning("⚠️ Data terbatas — AI & MA50 nonaktif (Mode IPO / Saham Baru)")
+else:
+    ai_enabled = True
 
 # =====================================================
 # INDIKATOR
 # =====================================================
 df["MA20"] = df["Close"].rolling(20).mean()
-df["MA50"] = df["Close"].rolling(50).mean()
+
+if ai_enabled:
+    df["MA50"] = df["Close"].rolling(50).mean()
+else:
+    df["MA50"] = df["MA20"]  # fallback aman
 
 # RSI
 delta = df["Close"].diff()
@@ -106,7 +119,7 @@ df["Signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
 df.dropna(inplace=True)
 
 # =====================================================
-# SAFE SCALAR VALUES (ANTI ERROR)
+# SAFE SCALAR VALUES
 # =====================================================
 price = float(df["Close"].iloc[-1])
 ma20 = float(df["MA20"].iloc[-1])
@@ -121,49 +134,57 @@ signal_prev = float(df["Signal"].iloc[-2])
 support = float(df["Low"].rolling(20).min().iloc[-1])
 
 # =====================================================
-# AI MODEL (LIGHTWEIGHT)
+# AI MODEL (OPTIONAL)
 # =====================================================
-df["Target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
+if ai_enabled:
+    df["Target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
 
-features = ["RSI", "MACD", "MA20", "MA50"]
-X = df[features]
-y = df["Target"]
+    features = ["RSI", "MACD", "MA20", "MA50"]
+    X = df[features]
+    y = df["Target"]
 
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
 
-model = LogisticRegression(max_iter=200)
-model.fit(X_scaled[:-1], y[:-1])
+    model = LogisticRegression(max_iter=200)
+    model.fit(X_scaled[:-1], y[:-1])
 
-latest_features = scaler.transform([df[features].iloc[-1]])
-ai_prob = float(model.predict_proba(latest_features)[0][1])
+    latest_features = scaler.transform([df[features].iloc[-1]])
+    ai_prob = float(model.predict_proba(latest_features)[0][1])
+else:
+    ai_prob = 0.5  # netral
 
 # =====================================================
-# SCORING SYSTEM
+# SCORING SYSTEM (ADAPTIVE)
 # =====================================================
 score = 0
 
+# Trend
 if price > ma20:
     score += 1
 if ma20 > ma50:
     score += 1
 
+# Momentum
 if rsi_val < 30:
     score += 1
 elif rsi_val > 70:
     score -= 1
 
+# MACD
 if macd_prev < signal_prev and macd_now > signal_now:
     score += 1
 elif macd_prev > signal_prev and macd_now < signal_now:
     score -= 1
 
-# AI adjustment
-if ai_prob > 0.6:
-    score += 1
-elif ai_prob < 0.4:
-    score -= 1
+# AI influence (only if enabled)
+if ai_enabled:
+    if ai_prob > 0.6:
+        score += 1
+    elif ai_prob < 0.4:
+        score -= 1
 
+# Final decision
 if score >= 3:
     decision = "BUY"
 elif score <= -2:
@@ -180,18 +201,19 @@ risk_per_share = max(price - stop_loss, 1)
 lot_size = int(risk_amount / risk_per_share)
 
 # =====================================================
-# TELEGRAM ALERT (ANTI SPAM)
+# TELEGRAM ALERT (ANTI-SPAM)
 # =====================================================
 if "last_signal" not in st.session_state:
     st.session_state.last_signal = ""
 
 if is_market_open and decision != "HOLD" and decision != st.session_state.last_signal:
     send_alert(
-        f"📊 AI TRADING SIGNAL\n"
+        f"📊 AI SIGNAL\n"
         f"Saham: {ticker}\n"
         f"Signal: {decision}\n"
         f"Harga: {price:,.2f}\n"
-        f"AI Prob UP: {ai_prob:.2f}"
+        f"AI Prob: {ai_prob:.2f}\n"
+        f"Mode: {'AI' if ai_enabled else 'Rule-Based'}"
     )
     st.session_state.last_signal = decision
 
@@ -215,4 +237,8 @@ st.write(f"""
 - Max Lot (estimasi): {lot_size:,}
 """)
 
-st.caption("FINAL CLEAN VERSION | Streamlit Cloud Optimized")
+st.caption(
+    f"Mode: {'AI Aktif' if ai_enabled else 'Rule-Based (Data Terbatas)'} | "
+    f"Data Candle: {data_len} | "
+    "FINAL++ Streamlit Cloud Ready"
+)
