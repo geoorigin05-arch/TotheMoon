@@ -11,16 +11,17 @@ from sklearn.preprocessing import StandardScaler
 # PAGE CONFIG
 # ======================================================
 st.set_page_config(
-    page_title="AI Stock Trading System FINAL++",
+    page_title="AI Stock Trading System",
     layout="centered"
 )
 
-st.title("📊 AI Stock Trading System (FINAL++)")
+st.title("📊 AI Stock Trading System")
+st.caption("Decision Support System • IDX • AI + Technical Analysis")
 
 # ======================================================
-# SIDEBAR INPUT
+# SIDEBAR — INPUT & NOTE
 # ======================================================
-st.sidebar.header("⚙️ Parameter")
+st.sidebar.header("⚙️ Trading Parameters")
 
 symbol = st.sidebar.text_input("Kode Saham IDX (.JK)", "GOTO.JK")
 period = st.sidebar.selectbox("Periode Data", ["3mo", "6mo", "1y"], index=1)
@@ -29,6 +30,25 @@ mode = st.sidebar.selectbox("Mode Trading", ["Swing", "Scalping"])
 modal = st.sidebar.number_input("Modal (Rp)", value=10_000_000, step=500_000)
 risk_pct = st.sidebar.slider("Risk per Trade (%)", 1, 20, 2)
 
+# =======================
+# 🧠 CARA MEMBACA (SIDEBAR)
+# =======================
+with st.sidebar.expander("🧠 Cara Membaca Hasil", expanded=True):
+    st.markdown("""
+**📍 ENTRY ZONE**
+- 🟢 **BUY ZONE** → Area aman masuk (hindari harga puncak)
+- 🔴 **SELL ZONE** → Area target / distribusi
+
+**📈 EQUITY CURVE**
+- Naik stabil → strategi sehat
+- Banyak drawdown → kurangi agresivitas
+
+**🎯 CONFIDENCE**
+- 🟢 HIGH → size normal
+- 🟡 MEDIUM → kecilkan size
+- 🔴 LOW → tunggu, no trade
+""")
+
 # ======================================================
 # LOAD DATA
 # ======================================================
@@ -36,7 +56,7 @@ df = yf.download(symbol, period=period, interval="1d")
 df.dropna(inplace=True)
 
 if len(df) < 30:
-    st.error("❌ Data terlalu sedikit untuk analisis")
+    st.error("❌ Data tidak cukup untuk analisis")
     st.stop()
 
 # ======================================================
@@ -48,14 +68,12 @@ slow = 20 if mode == "Scalping" else 50
 df["MA_fast"] = df["Close"].rolling(fast).mean()
 df["MA_slow"] = df["Close"].rolling(slow).mean()
 
-# RSI
 delta = df["Close"].diff()
 gain = delta.clip(lower=0)
 loss = -delta.clip(upper=0)
 rs = gain.rolling(14).mean() / loss.rolling(14).mean()
 df["RSI"] = 100 - (100 / (1 + rs))
 
-# MACD
 ema12 = df["Close"].ewm(span=12).mean()
 ema26 = df["Close"].ewm(span=26).mean()
 df["MACD"] = ema12 - ema26
@@ -64,7 +82,7 @@ df["Signal"] = df["MACD"].ewm(span=9).mean()
 df.dropna(inplace=True)
 
 # ======================================================
-# LATEST VALUES (SAFE FLOAT)
+# LATEST VALUES
 # ======================================================
 price = float(df["Close"].iloc[-1])
 rsi = float(df["RSI"].iloc[-1])
@@ -72,34 +90,29 @@ macd = float(df["MACD"].iloc[-1])
 signal = float(df["Signal"].iloc[-1])
 ma_fast = float(df["MA_fast"].iloc[-1])
 
-# ======================================================
-# SUPPORT / RESISTANCE
-# ======================================================
 support = float(df["Low"].rolling(20).min().iloc[-1])
 resistance = float(df["High"].rolling(20).max().iloc[-1])
 
+# ======================================================
 # ENTRY ZONE
-buy_zone_low = float(support * 1.02)
-buy_zone_high = float(ma_fast)
+# ======================================================
+buy_zone_low = support * 1.02
+buy_zone_high = ma_fast
 
-sell_zone_low = float(resistance * 0.98)
-sell_zone_high = float(resistance * 1.05)
+sell_zone_low = resistance * 0.98
+sell_zone_high = resistance * 1.05
 
 # ======================================================
-# SCORING SYSTEM
+# SCORING
 # ======================================================
 score = 0
-if price > ma_fast:
-    score += 1
-if macd > signal:
-    score += 1
-if rsi < 70:
-    score += 1
-if rsi < 30:
-    score += 1
+if price > ma_fast: score += 1
+if macd > signal: score += 1
+if rsi < 70: score += 1
+if rsi < 30: score += 1
 
 # ======================================================
-# AI MODEL (ADAPTIVE)
+# AI MODEL
 # ======================================================
 ai_enabled = len(df) >= 50
 ai_prob = 0.5
@@ -107,6 +120,7 @@ ai_prob = 0.5
 if ai_enabled:
     df["Target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
     features = ["RSI", "MACD", "MA_fast", "MA_slow"]
+
     X = df[features]
     y = df["Target"]
 
@@ -116,68 +130,61 @@ if ai_enabled:
     model = LogisticRegression(max_iter=300)
     model.fit(Xs[:-1], y[:-1])
 
-    latest = scaler.transform([X.iloc[-1]])
-    ai_prob = float(model.predict_proba(latest)[0][1])
+    ai_prob = float(model.predict_proba(
+        scaler.transform([X.iloc[-1]])
+    )[0][1])
 
-    if ai_prob > 0.6:
-        score += 1
-    elif ai_prob < 0.4:
-        score -= 1
+    if ai_prob > 0.6: score += 1
+    elif ai_prob < 0.4: score -= 1
 
 # ======================================================
 # DECISION & CONFIDENCE
 # ======================================================
-if score >= 3:
-    decision = "BUY"
-elif score <= -2:
-    decision = "SELL"
-else:
-    decision = "HOLD"
+decision = "BUY" if score >= 3 else "SELL" if score <= -2 else "HOLD"
 
-if score >= 4:
-    confidence = "🟢 HIGH"
-elif score >= 2:
-    confidence = "🟡 MEDIUM"
-else:
-    confidence = "🔴 LOW"
+confidence = (
+    "🟢 HIGH" if score >= 4 else
+    "🟡 MEDIUM" if score >= 2 else
+    "🔴 LOW"
+)
 
 # ======================================================
-# STOP LOSS & RISK MANAGEMENT
+# RISK MANAGEMENT
 # ======================================================
-stop_loss = float(support)
-
-risk_amount = float(modal * (risk_pct / 100))
+stop_loss = support
+risk_amount = modal * (risk_pct / 100)
 risk_per_share = abs(price - stop_loss)
-
-if risk_per_share <= 0:
-    max_lot = 0
-else:
-    max_lot = int(risk_amount / risk_per_share)
+max_lot = int(risk_amount / risk_per_share) if risk_per_share > 0 else 0
 
 # ======================================================
-# DISPLAY SUMMARY
+# =================== UI OUTPUT =========================
 # ======================================================
-st.subheader("📊 Ringkasan")
 
-c1, c2, c3 = st.columns(3)
-c1.metric("Harga", f"{price:,.2f}")
-c2.metric("RSI", f"{rsi:.2f}")
+st.divider()
+st.subheader("📊 Market Snapshot")
+
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Harga", f"{price:,.0f}")
+c2.metric("RSI", f"{rsi:.1f}")
 c3.metric("AI Prob", f"{ai_prob:.2f}")
+c4.metric("Score", score)
 
-st.metric("Score", score)
-st.metric("Decision", decision)
-st.metric("Confidence", confidence)
+st.markdown(f"### 📌 Decision: **{decision}** &nbsp;&nbsp;|&nbsp;&nbsp; Confidence: **{confidence}**")
 
 # ======================================================
-# ENTRY ZONE DISPLAY
+# ENTRY ZONE
 # ======================================================
+st.divider()
 st.subheader("📍 Entry Zone")
-st.write(f"🟢 BUY ZONE : {int(buy_zone_low):,} – {int(buy_zone_high):,}")
-st.write(f"🔴 SELL ZONE : {int(sell_zone_low):,} – {int(sell_zone_high):,}")
+
+z1, z2 = st.columns(2)
+z1.success(f"🟢 BUY ZONE\n\n{int(buy_zone_low):,} – {int(buy_zone_high):,}")
+z2.error(f"🔴 SELL ZONE\n\n{int(sell_zone_low):,} – {int(sell_zone_high):,}")
 
 # ======================================================
-# BACKTEST EQUITY CURVE (SAFE)
+# BACKTEST
 # ======================================================
+st.divider()
 st.subheader("📈 Backtest – Equity Curve")
 
 equity = [float(modal)]
@@ -206,32 +213,12 @@ st.pyplot(fig)
 # ======================================================
 # RISK INFO
 # ======================================================
+st.divider()
 st.subheader("📌 Risk Management")
-st.write(f"Modal: Rp {modal:,.0f}")
-st.write(f"Risk per Trade: {risk_pct}%")
-st.write(f"Risk Amount: Rp {risk_amount:,.0f}")
-st.write(f"Stop Loss: {stop_loss:,.2f}")
-st.write(f"Max Lot (estimasi): {max_lot:,}")
 
-# ======================================================
-# NOTE / BASKET
-# ======================================================
-with st.expander("🧠 Cara Membaca Hasil (PENTING)", expanded=False):
-    st.markdown("""
-### 📍 ENTRY ZONE
-- 🟢 BUY ZONE → tempat **AMAN masuk**
-- 🔴 SELL ZONE → target / distribusi
-
-### 📈 EQUITY CURVE
-- Naik stabil → strategi sehat
-- Banyak drawdown → jangan agresif
-
-### 🎯 CONFIDENCE
-- 🟢 HIGH → size normal
-- 🟡 MEDIUM → kecilkan size
-- 🔴 LOW → tunggu
-
-📌 *Gunakan sistem sebagai alat bantu, bukan emosi.*
-""")
+r1, r2, r3 = st.columns(3)
+r1.metric("Risk Amount", f"Rp {risk_amount:,.0f}")
+r2.metric("Stop Loss", f"{stop_loss:,.0f}")
+r3.metric("Max Lot", f"{max_lot:,}")
 
 st.caption("AI Aktif" if ai_enabled else "AI Nonaktif (data terbatas)")
