@@ -4,6 +4,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+from datetime import datetime
+import pytz
 
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
@@ -16,29 +18,31 @@ from dotenv import load_dotenv
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-
 bot = Bot(token=BOT_TOKEN) if BOT_TOKEN else None
+
+# ======================================================
+# IDX MARKET HOURS
+# ======================================================
+tz = pytz.timezone("Asia/Jakarta")
+now = datetime.now(tz)
+
+is_weekday = now.weekday() < 5
+is_market_hour = is_weekday and (9 <= now.hour < 15)
 
 # ======================================================
 # PAGE CONFIG
 # ======================================================
-st.set_page_config(
-    page_title="AI Stock Trading System",
-    layout="centered"
-)
-
+st.set_page_config(page_title="AI Stock Trading System", layout="centered")
 st.title("📊 AI Stock Trading System")
 st.caption("IDX • Technical + AI • Decision Support")
 
 # ======================================================
-# SIDEBAR INPUT
+# SIDEBAR
 # ======================================================
 st.sidebar.header("⚙️ Trading Parameters")
-
 symbol = st.sidebar.text_input("Kode Saham IDX (.JK)", "GOTO.JK")
 period = st.sidebar.selectbox("Periode Data", ["3mo", "6mo", "1y"], index=1)
 mode = st.sidebar.selectbox("Mode Trading", ["Swing", "Scalping"])
-
 modal = st.sidebar.number_input("Modal (Rp)", value=10_000_000, step=500_000)
 risk_pct = st.sidebar.slider("Risk per Trade (%)", 1, 20, 2)
 
@@ -48,14 +52,10 @@ with st.sidebar.expander("🧠 Cara Membaca Hasil", expanded=True):
 - 🟢 BUY ZONE → area aman masuk
 - 🔴 SELL ZONE → target distribusi
 
-**📈 EQUITY CURVE**
-- Naik stabil → strategi sehat
-- Banyak drawdown → jangan agresif
-
 **🎯 CONFIDENCE**
-- 🟢 HIGH → size normal
+- 🟢 HIGH → boleh entry
 - 🟡 MEDIUM → kecilkan size
-- 🔴 LOW → tunggu
+- 🔴 LOW → NO TRADE
 """)
 
 # ======================================================
@@ -68,9 +68,6 @@ if len(df) < 15:
     st.error("❌ Data terlalu sedikit")
     st.stop()
 
-# ======================================================
-# MODE & DATA STATUS
-# ======================================================
 data_limited = (period == "3mo") or (len(df) < 50)
 quick_view = data_limited
 
@@ -97,7 +94,7 @@ df["Signal"] = df["MACD"].ewm(span=9).mean()
 df.dropna(inplace=True)
 
 # ======================================================
-# LATEST VALUE (SAFE FLOAT)
+# LATEST VALUES
 # ======================================================
 price = float(df["Close"].iloc[-1])
 rsi = float(df["RSI"].iloc[-1])
@@ -106,7 +103,7 @@ signal = float(df["Signal"].iloc[-1])
 ma_fast = float(df["MA_fast"].iloc[-1])
 
 # ======================================================
-# SUPPORT & RESISTANCE (FIX ERROR)
+# SUPPORT & RESISTANCE (ULTRA SAFE)
 # ======================================================
 low_roll = df["Low"].rolling(20).min()
 high_roll = df["High"].rolling(20).max()
@@ -114,17 +111,16 @@ high_roll = df["High"].rolling(20).max()
 last_low = low_roll.iloc[-1]
 last_high = high_roll.iloc[-1]
 
-support = float(last_low) if not pd.isna(last_low) else float(df["Low"].iloc[-5:].min())
-resistance = float(last_high) if not pd.isna(last_high) else float(df["High"].iloc[-5:].max())
+support = float(last_low) if isinstance(last_low, (float, int)) and not np.isnan(last_low) else float(df["Low"].iloc[-5:].min())
+resistance = float(last_high) if isinstance(last_high, (float, int)) and not np.isnan(last_high) else float(df["High"].iloc[-5:].max())
 
 # ======================================================
 # ENTRY ZONE
 # ======================================================
-buy_zone_low = float(support * 1.02)
-buy_zone_high = float(ma_fast)
-
-sell_zone_low = float(resistance * 0.98)
-sell_zone_high = float(resistance * 1.05)
+buy_zone_low = support * 1.02
+buy_zone_high = ma_fast
+sell_zone_low = resistance * 0.98
+sell_zone_high = resistance * 1.05
 
 # ======================================================
 # SCORING
@@ -136,7 +132,7 @@ if rsi < 70: score += 1
 if rsi < 30: score += 1
 
 # ======================================================
-# AI MODEL (AUTO OFF)
+# AI (AUTO OFF IF DATA LIMITED)
 # ======================================================
 ai_enabled = not data_limited
 ai_prob = 0.5
@@ -154,18 +150,16 @@ if ai_enabled:
     model = LogisticRegression(max_iter=300)
     model.fit(Xs[:-1], y[:-1])
 
-    ai_prob = float(model.predict_proba(
-        scaler.transform([X.iloc[-1]])
-    )[0][1])
+    ai_prob = float(model.predict_proba(scaler.transform([X.iloc[-1]]))[0][1])
 
     if ai_prob > 0.6: score += 1
     elif ai_prob < 0.4: score -= 1
 
 # ======================================================
-# DECISION
+# DECISION & CONFIDENCE
 # ======================================================
-decision = "BUY" if score >= 3 else "SELL" if score <= -2 else "HOLD"
 confidence = "🟢 HIGH" if score >= 4 else "🟡 MEDIUM" if score >= 2 else "🔴 LOW"
+decision = "NO TRADE" if confidence == "🔴 LOW" else ("BUY" if score >= 3 else "SELL" if score <= -2 else "HOLD")
 
 # ======================================================
 # RISK MANAGEMENT
@@ -176,38 +170,62 @@ risk_per_share = abs(price - stop_loss)
 max_lot = int(risk_amount / risk_per_share) if risk_per_share > 0 else 0
 
 # ======================================================
-# TELEGRAM ALERT (BUY ZONE)
+# TELEGRAM ALERT (ANTI-SPAM 1x/HARI)
 # ======================================================
-if bot and (buy_zone_low <= price <= buy_zone_high):
-    try:
-        bot.send_message(
-            chat_id=CHAT_ID,
-            text=f"""
-📢 BUY ZONE ALERT
+alert_file = f".alert_{symbol.replace('.', '_')}.txt"
+today = now.strftime("%Y-%m-%d")
+
+def can_alert():
+    if not os.path.exists(alert_file):
+        return True
+    with open(alert_file) as f:
+        return f.read().strip() != today
+
+def mark_alerted():
+    with open(alert_file, "w") as f:
+        f.write(today)
+
+if bot and is_market_hour and can_alert():
+    alert_type = None
+
+    if buy_zone_low <= price <= buy_zone_high:
+        alert_type = "🟢 BUY ZONE"
+    elif price >= sell_zone_low:
+        alert_type = "🔴 SELL ZONE"
+    elif price <= stop_loss:
+        alert_type = "⛔ STOP LOSS"
+
+    if alert_type:
+        try:
+            bot.send_message(
+                chat_id=CHAT_ID,
+                text=f"""
+📢 {alert_type}
 
 📊 {symbol}
 💰 Harga: {price:,.0f}
 
-🟢 BUY ZONE:
-{int(buy_zone_low):,} – {int(buy_zone_high):,}
+BUY : {int(buy_zone_low):,} – {int(buy_zone_high):,}
+SELL: {int(sell_zone_low):,} – {int(sell_zone_high):,}
+SL  : {int(stop_loss):,}
 
 🎯 Decision: {decision}
 {confidence}
 """
-        )
-    except:
-        pass
+            )
+            mark_alerted()
+        except:
+            pass
 
 # ======================================================
-# ================= UI ================================
+# UI OUTPUT
 # ======================================================
 st.divider()
 
 if data_limited:
-    st.warning("⚠️ Data Terbatas — AI & Backtest dinonaktifkan (Quick View Mode)")
+    st.warning("⚠️ Data Terbatas — AI & Backtest dinonaktifkan (Quick View)")
 
 st.subheader("📊 Market Snapshot")
-
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Harga", f"{price:,.0f}")
 c2.metric("RSI", f"{rsi:.1f}")
@@ -218,45 +236,12 @@ st.markdown(f"### 📌 Decision: **{decision}** | Confidence: **{confidence}**")
 
 st.divider()
 st.subheader("📍 Entry Zone")
-
 z1, z2 = st.columns(2)
 z1.success(f"🟢 BUY ZONE\n\n{int(buy_zone_low):,} – {int(buy_zone_high):,}")
 z2.error(f"🔴 SELL ZONE\n\n{int(sell_zone_low):,} – {int(sell_zone_high):,}")
 
-# ======================================================
-# BACKTEST (AUTO OFF)
-# ======================================================
-if not quick_view:
-    st.divider()
-    st.subheader("📈 Backtest Equity Curve")
-
-    equity = [modal]
-    position = 0
-
-    for i in range(1, len(df)):
-        close_i = float(df["Close"].iloc[i])
-        ma_i = float(df["MA_fast"].iloc[i])
-
-        if close_i > ma_i and position == 0:
-            position = equity[-1] / close_i
-        elif close_i < ma_i and position > 0:
-            equity.append(position * close_i)
-            position = 0
-        else:
-            equity.append(equity[-1])
-
-    fig, ax = plt.subplots()
-    ax.plot(df.index[:len(equity)], equity)
-    ax.set_ylabel("Equity (Rp)")
-    ax.set_xlabel("Tanggal")
-    st.pyplot(fig)
-
-# ======================================================
-# RISK INFO
-# ======================================================
 st.divider()
 st.subheader("📌 Risk Management")
-
 r1, r2, r3 = st.columns(3)
 r1.metric("Risk Amount", f"Rp {risk_amount:,.0f}")
 r2.metric("Stop Loss", f"{stop_loss:,.0f}")
