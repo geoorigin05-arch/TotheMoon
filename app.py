@@ -23,7 +23,7 @@ st.caption("Decision Support System • IDX • AI + Technical Analysis")
 # ======================================================
 st.sidebar.header("⚙️ Trading Parameters")
 
-symbol = st.sidebar.text_input("Kode Saham IDX (.JK)", "GOTO.JK")
+symbol = st.sidebar.text_input("Kode Saham IDX (.JK)", "BBCA.JK")
 period = st.sidebar.selectbox("Periode Data", ["3mo", "6mo", "1y"], index=1)
 mode = st.sidebar.selectbox("Mode Trading", ["Swing", "Scalping"])
 
