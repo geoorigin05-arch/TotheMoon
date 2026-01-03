@@ -131,12 +131,23 @@ support = df["Low"].rolling(20).min().iloc[-1]
 resistance = df["High"].rolling(20).max().iloc[-1]
 
 score = 0
-if price > df["MA20"].iloc[-1]: score += 1
-if df["MA20"].iloc[-1] > df["MA50"].iloc[-1]: score += 1
-if df["RSI"].iloc[-1] < 30: score += 1
-if df["RSI"].iloc[-1] > 70: score -= 1
-if df["MACD"].iloc[-2] < df["Signal"].iloc[-2] and df["MACD"].iloc[-1] > df["Signal"].iloc[-1]: score += 1
-if df["MACD"].iloc[-2] > df["Signal"].iloc[-2] and df["MACD"].iloc[-1] < df["Signal"].iloc[-1]: score -= 1
+
+if not np.isnan(ma20) and price > ma20:
+    score += 1
+
+if not np.isnan(ma50) and ma20 > ma50:
+    score += 1
+
+if rsi_val < 30:
+    score += 1
+elif rsi_val > 70:
+    score -= 1
+
+if macd_prev < signal_prev and macd_now > signal_now:
+    score += 1
+elif macd_prev > signal_prev and macd_now < signal_now:
+    score -= 1
+
 
 final_score = score + (1 if ai_prob > 0.6 else -1 if ai_prob < 0.4 else 0)
 
