@@ -1,0 +1,10 @@
+streamlit
+yfinance
+pandas
+numpy
+matplotlib
+python-telegram-bot
+python-dotenv
+streamlit-autorefresh
+pytz
+scikit-learn
