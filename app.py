@@ -188,15 +188,20 @@ st.write(f"🔴 SELL ZONE : {sell_zone_low:,.0f} – {sell_zone_high:,.0f}")
 # ==============================
 st.subheader("📈 Backtest – Equity Curve")
 
-equity = [modal]
-position = 0
+equity = [float(modal)]
+position = 0.0
 
 for i in range(1, len(df)):
-    if df["Close"].iloc[i] > df["MA_fast"].iloc[i] and position == 0:
-        position = equity[-1] / df["Close"].iloc[i]
-    elif df["Close"].iloc[i] < df["MA_fast"].iloc[i] and position > 0:
-        equity.append(position * df["Close"].iloc[i])
-        position = 0
+    close_price = float(df["Close"].iloc[i])
+    ma_fast_i = float(df["MA_fast"].iloc[i])
+
+    if close_price > ma_fast_i and position == 0:
+        position = equity[-1] / close_price
+
+    elif close_price < ma_fast_i and position > 0:
+        equity.append(position * close_price)
+        position = 0.0
+
     else:
         equity.append(equity[-1])
 
