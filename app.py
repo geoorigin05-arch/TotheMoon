@@ -11,11 +11,11 @@ from sklearn.preprocessing import StandardScaler
 # PAGE CONFIG
 # ======================================================
 st.set_page_config(
-    page_title="AI Stock Trading System",
+    page_title="Stock Monitoring System",
     layout="centered"
 )
 
-st.title("📊 AI Stock Trading System")
+st.title("📊 Stock Monitoring System")
 st.caption("Decision Support System • IDX • AI + Technical Analysis")
 
 # ======================================================
@@ -23,7 +23,7 @@ st.caption("Decision Support System • IDX • AI + Technical Analysis")
 # ======================================================
 st.sidebar.header("⚙️ Trading Parameters")
 
-symbol = st.sidebar.text_input("Kode Saham IDX (.JK)", "GOTO.JK")
+symbol = st.sidebar.text_input("Kode Saham IDX (.JK)", "BBCA.JK")
 period = st.sidebar.selectbox("Periode Data", ["3mo", "6mo", "1y"], index=1)
 mode = st.sidebar.selectbox("Mode Trading", ["Swing", "Scalping"])
 
@@ -33,7 +33,7 @@ risk_pct = st.sidebar.slider("Risk per Trade (%)", 1, 20, 2)
 # =======================
 # 🧠 CARA MEMBACA (SIDEBAR)
 # =======================
-with st.sidebar.expander("🧠 Cara Membaca Hasil", expanded=True):
+with st.sidebar.expander("🧠 Cara Membaca Hasil", expanded=False):
     st.markdown("""
 **📍 ENTRY ZONE**
 - 🟢 **BUY ZONE** → Area aman masuk (hindari harga puncak)
