@@ -25,7 +25,6 @@ bot = Bot(token=BOT_TOKEN) if BOT_TOKEN else None
 # ======================================================
 tz = pytz.timezone("Asia/Jakarta")
 now = datetime.now(tz)
-
 is_weekday = now.weekday() < 5
 is_market_hour = is_weekday and (9 <= now.hour < 15)
 
@@ -37,7 +36,7 @@ st.title("📊 Stock Monitoring System")
 st.caption("IDX • Technical + AI • Decision Support")
 
 # ======================================================
-# SIDEBAR
+# SIDEBAR INPUT
 # ======================================================
 st.sidebar.header("⚙️ Trading Parameters")
 symbol = st.sidebar.text_input("Kode Saham IDX (.JK)", "BUMI.JK")
@@ -132,7 +131,7 @@ if rsi < 70: score += 1
 if rsi < 30: score += 1
 
 # ======================================================
-# AI (AUTO OFF IF DATA LIMITED)
+# AI MODEL (AUTO OFF)
 # ======================================================
 ai_enabled = not data_limited
 ai_prob = 0.5
@@ -150,7 +149,9 @@ if ai_enabled:
     model = LogisticRegression(max_iter=300)
     model.fit(Xs[:-1], y[:-1])
 
-    ai_prob = float(model.predict_proba(scaler.transform([X.iloc[-1]]))[0][1])
+    ai_prob = float(model.predict_proba(
+        scaler.transform([X.iloc[-1]])
+    )[0][1])
 
     if ai_prob > 0.6: score += 1
     elif ai_prob < 0.4: score -= 1
@@ -234,15 +235,53 @@ c4.metric("Score", score)
 
 st.markdown(f"### 📌 Decision: **{decision}** | Confidence: **{confidence}**")
 
+# ======================================================
+# ENTRY ZONE
+# ======================================================
 st.divider()
 st.subheader("📍 Entry Zone")
 z1, z2 = st.columns(2)
 z1.success(f"🟢 BUY ZONE\n\n{int(buy_zone_low):,} – {int(buy_zone_high):,}")
 z2.error(f"🔴 SELL ZONE\n\n{int(sell_zone_low):,} – {int(sell_zone_high):,}")
 
+# ======================================================
+# RISK MANAGEMENT
+# ======================================================
 st.divider()
 st.subheader("📌 Risk Management")
 r1, r2, r3 = st.columns(3)
 r1.metric("Risk Amount", f"Rp {risk_amount:,.0f}")
 r2.metric("Stop Loss", f"{stop_loss:,.0f}")
 r3.metric("Max Lot", f"{max_lot:,}")
+
+# ======================================================
+# PROFIT CALCULATOR (NEW)
+# ======================================================
+st.divider()
+st.subheader("💰 Profit Calculator")
+
+target_price = st.number_input(
+    "Target Jual (Rp)",
+    min_value=0.0,
+    value=float(sell_zone_low),
+    step=10.0
+)
+
+lot = max_lot
+shares = lot * 100
+
+profit_per_share = target_price - price
+total_profit = profit_per_share * shares
+profit_pct = (total_profit / modal) * 100 if modal > 0 else 0
+
+p1, p2, p3 = st.columns(3)
+p1.metric("Lot Digunakan", f"{lot:,}")
+p2.metric("Profit (Rp)", f"{total_profit:,.0f}")
+p3.metric("Profit (%)", f"{profit_pct:.2f}%")
+
+if target_price <= price:
+    st.warning("⚠️ Target jual harus di atas harga beli")
+elif confidence == "🔴 LOW":
+    st.info("ℹ️ Confidence LOW → sistem menyarankan NO TRADE")
+
+st.caption("📌 Profit adalah estimasi berdasarkan target harga & risk management (belum termasuk fee & pajak).")
