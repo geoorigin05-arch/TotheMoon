@@ -5,44 +5,52 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import streamlit as st
-import matplotlib.pyplot as plt
 
 from datetime import datetime
-from telegram import Bot
 from streamlit_autorefresh import st_autorefresh
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
+# Telegram (SAFE)
+from telegram import Bot
+from telegram.error import InvalidToken
+
 # =====================================================
-# STREAMLIT CONFIG (FAST BOOT)
+# STREAMLIT CONFIG
 # =====================================================
 st.set_page_config(
-    page_title="Stock AI Trading System",
+    page_title="AI Stock Trading System",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-st.title("📊 Stock AI Trading System (Always-On Optimized)")
+st.title("📊 AI Stock Trading System (FINAL)")
 
 # =====================================================
-# AUTO REFRESH INTERNAL (ANTI SLEEP)
+# AUTO REFRESH (ANTI SLEEP)
 # =====================================================
-st_autorefresh(interval=60000, key="auto_refresh")  # 1 menit
+st_autorefresh(interval=60_000, key="refresh")  # 1 menit
 
 # =====================================================
-# ENV (STREAMLIT SECRETS COMPATIBLE)
+# ENV (STREAMLIT SECRETS)
 # =====================================================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-bot = Bot(token=BOT_TOKEN)
 
-# =====================================================
-# HEARTBEAT (SESSION KEEP-ALIVE)
-# =====================================================
-if "heartbeat" not in st.session_state:
-    st.session_state.heartbeat = time.time()
+bot = None
+if BOT_TOKEN:
+    try:
+        bot = Bot(token=BOT_TOKEN)
+    except InvalidToken:
+        st.warning("⚠️ BOT_TOKEN tidak valid")
 
-st.session_state.heartbeat = time.time()
+def send_alert(message):
+    if bot is None or CHAT_ID is None:
+        return
+    try:
+        bot.send_message(chat_id=CHAT_ID, text=message)
+    except Exception:
+        pass
 
 # =====================================================
 # JAM BURSA IDX
@@ -50,30 +58,30 @@ st.session_state.heartbeat = time.time()
 tz = pytz.timezone("Asia/Jakarta")
 now = datetime.now(tz)
 
-market_open = now.replace(hour=9, minute=0, second=0)
-market_close = now.replace(hour=15, minute=0, second=0)
+market_open = now.replace(hour=9, minute=0, second=0, microsecond=0)
+market_close = now.replace(hour=15, minute=0, second=0, microsecond=0)
 is_market_open = market_open <= now <= market_close
 
 # =====================================================
-# INPUT
+# INPUT USER
 # =====================================================
-ticker = st.text_input("Kode Saham (.JK)", "GOTO.JK")
+ticker = st.text_input("Kode Saham (IDX, contoh: BUMI.JK / GOTO.JK)", "GOTO.JK")
 period = st.selectbox("Periode Data", ["6mo", "1y", "2y"])
 
 modal = st.number_input("Modal (Rp)", value=10_000_000, step=1_000_000)
 risk_pct = st.slider("Risk per Trade (%)", 1, 5, 2)
 
 # =====================================================
-# LOAD DATA (CACHE OPTIMAL)
+# LOAD DATA
 # =====================================================
-@st.cache_data(ttl=300)  # refresh data tiap 5 menit
+@st.cache_data(ttl=300)
 def load_data(ticker, period):
     return yf.download(ticker, period=period, progress=False)
 
 df = load_data(ticker, period)
 
-if df.empty:
-    st.error("❌ Data tidak tersedia")
+if df.empty or len(df) < 60:
+    st.error("❌ Data tidak cukup")
     st.stop()
 
 # =====================================================
@@ -98,7 +106,22 @@ df["Signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
 df.dropna(inplace=True)
 
 # =====================================================
-# AI-BASED SCORING (LIGHTWEIGHT)
+# SAFE SCALAR VALUES (ANTI ERROR)
+# =====================================================
+price = float(df["Close"].iloc[-1])
+ma20 = float(df["MA20"].iloc[-1])
+ma50 = float(df["MA50"].iloc[-1])
+rsi_val = float(df["RSI"].iloc[-1])
+
+macd_now = float(df["MACD"].iloc[-1])
+signal_now = float(df["Signal"].iloc[-1])
+macd_prev = float(df["MACD"].iloc[-2])
+signal_prev = float(df["Signal"].iloc[-2])
+
+support = float(df["Low"].rolling(20).min().iloc[-1])
+
+# =====================================================
+# AI MODEL (LIGHTWEIGHT)
 # =====================================================
 df["Target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
 
@@ -113,29 +136,16 @@ model = LogisticRegression(max_iter=200)
 model.fit(X_scaled[:-1], y[:-1])
 
 latest_features = scaler.transform([df[features].iloc[-1]])
-ai_prob = model.predict_proba(latest_features)[0][1]
+ai_prob = float(model.predict_proba(latest_features)[0][1])
 
 # =====================================================
-# RULE SCORING
+# SCORING SYSTEM
 # =====================================================
-price = float(df["Close"].iloc[-1])
-ma20 = float(df["MA20"].iloc[-1])
-ma50 = float(df["MA50"].iloc[-1])
-rsi_val = float(df["RSI"].iloc[-1])
-macd_now = float(df["MACD"].iloc[-1])
-signal_now = float(df["Signal"].iloc[-1])
-macd_prev = float(df["MACD"].iloc[-2])
-signal_prev = float(df["Signal"].iloc[-2])
-
-support = df["Low"].rolling(20).min().iloc[-1]
-resistance = df["High"].rolling(20).max().iloc[-1]
-
 score = 0
 
-if not np.isnan(ma20) and price > ma20:
+if price > ma20:
     score += 1
-
-if not np.isnan(ma50) and ma20 > ma50:
+if ma20 > ma50:
     score += 1
 
 if rsi_val < 30:
@@ -148,12 +158,15 @@ if macd_prev < signal_prev and macd_now > signal_now:
 elif macd_prev > signal_prev and macd_now < signal_now:
     score -= 1
 
+# AI adjustment
+if ai_prob > 0.6:
+    score += 1
+elif ai_prob < 0.4:
+    score -= 1
 
-final_score = score + (1 if ai_prob > 0.6 else -1 if ai_prob < 0.4 else 0)
-
-if final_score >= 3:
+if score >= 3:
     decision = "BUY"
-elif final_score <= -2:
+elif score <= -2:
     decision = "SELL"
 else:
     decision = "HOLD"
@@ -169,21 +182,15 @@ lot_size = int(risk_amount / risk_per_share)
 # =====================================================
 # TELEGRAM ALERT (ANTI SPAM)
 # =====================================================
-def send_alert(msg):
-    if is_market_open:
-        try:
-            bot.send_message(chat_id=CHAT_ID, text=msg)
-        except:
-            pass
-
 if "last_signal" not in st.session_state:
     st.session_state.last_signal = ""
 
-if decision != "HOLD" and decision != st.session_state.last_signal:
+if is_market_open and decision != "HOLD" and decision != st.session_state.last_signal:
     send_alert(
-        f"📊 AI SIGNAL\n"
-        f"{ticker}\n"
-        f"Decision: {decision}\n"
+        f"📊 AI TRADING SIGNAL\n"
+        f"Saham: {ticker}\n"
+        f"Signal: {decision}\n"
+        f"Harga: {price:,.2f}\n"
         f"AI Prob UP: {ai_prob:.2f}"
     )
     st.session_state.last_signal = decision
@@ -192,19 +199,20 @@ if decision != "HOLD" and decision != st.session_state.last_signal:
 # DASHBOARD
 # =====================================================
 c1, c2, c3, c4, c5 = st.columns(5)
+
 c1.metric("Harga", f"{price:,.2f}")
-c2.metric("RSI", f"{df['RSI'].iloc[-1]:.2f}")
+c2.metric("RSI", f"{rsi_val:.2f}")
 c3.metric("AI Prob", f"{ai_prob:.2f}")
-c4.metric("Decision", decision)
-c5.metric("Max Lot", f"{lot_size:,}")
+c4.metric("Score", score)
+c5.metric("Decision", decision)
 
 st.subheader("📌 Risk Management")
 st.write(f"""
 - Modal: Rp {modal:,.0f}  
-- Risk/Trade: {risk_pct}%  
+- Risk per Trade: {risk_pct}%  
 - Risk Amount: Rp {risk_amount:,.0f}  
-- Stop Loss: {stop_loss:,.2f}  
-- Max Lot: {lot_size:,}
+- Stop Loss: Rp {stop_loss:,.2f}  
+- Max Lot (estimasi): {lot_size:,}
 """)
 
-st.caption("Optimized for Streamlit Cloud | Internal auto-refresh + heartbeat")
+st.caption("FINAL CLEAN VERSION | Streamlit Cloud Optimized")
