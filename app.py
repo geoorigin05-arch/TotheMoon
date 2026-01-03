@@ -146,12 +146,19 @@ else:
     confidence = "🔴 LOW"
 
 # ==============================
-# RISK MANAGEMENT
+# RISK MANAGEMENT (SAFE)
 # ==============================
-risk_amount = modal * (risk_pct / 100)
-stop_loss = support
-risk_per_share = abs(price - stop_loss)
-max_lot = int(risk_amount / risk_per_share) if risk_per_share > 0 else 0
+support = float(support)
+price = float(price)
+
+risk_amount = float(modal * (risk_pct / 100))
+risk_per_share = abs(price - support)
+
+if risk_per_share <= 0:
+    max_lot = 0
+else:
+    max_lot = int(risk_amount / risk_per_share)
+
 
 # ==============================
 # DISPLAY METRICS
