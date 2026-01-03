@@ -118,7 +118,15 @@ ai_prob = model.predict_proba(latest_features)[0][1]
 # =====================================================
 # RULE SCORING
 # =====================================================
-price = df["Close"].iloc[-1]
+price = float(df["Close"].iloc[-1])
+ma20 = float(df["MA20"].iloc[-1])
+ma50 = float(df["MA50"].iloc[-1])
+rsi_val = float(df["RSI"].iloc[-1])
+macd_now = float(df["MACD"].iloc[-1])
+signal_now = float(df["Signal"].iloc[-1])
+macd_prev = float(df["MACD"].iloc[-2])
+signal_prev = float(df["Signal"].iloc[-2])
+
 support = df["Low"].rolling(20).min().iloc[-1]
 resistance = df["High"].rolling(20).max().iloc[-1]
 
