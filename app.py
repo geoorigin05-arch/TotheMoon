@@ -32,21 +32,21 @@ is_market_hour = is_weekday and (9 <= now.hour < 15)
 # ======================================================
 # PAGE CONFIG
 # ======================================================
-st.set_page_config(page_title="AI Stock Trading System", layout="centered")
-st.title("📊 AI Stock Trading System")
+st.set_page_config(page_title="Stock Monitoring System", layout="centered")
+st.title("📊 Stock Monitoring System")
 st.caption("IDX • Technical + AI • Decision Support")
 
 # ======================================================
 # SIDEBAR
 # ======================================================
 st.sidebar.header("⚙️ Trading Parameters")
-symbol = st.sidebar.text_input("Kode Saham IDX (.JK)", "GOTO.JK")
+symbol = st.sidebar.text_input("Kode Saham IDX (.JK)", "BUMI.JK")
 period = st.sidebar.selectbox("Periode Data", ["3mo", "6mo", "1y"], index=1)
 mode = st.sidebar.selectbox("Mode Trading", ["Swing", "Scalping"])
 modal = st.sidebar.number_input("Modal (Rp)", value=10_000_000, step=500_000)
 risk_pct = st.sidebar.slider("Risk per Trade (%)", 1, 20, 2)
 
-with st.sidebar.expander("🧠 Cara Membaca Hasil", expanded=True):
+with st.sidebar.expander("🧠 Cara Membaca Hasil", expanded=False):
     st.markdown("""
 **📍 ENTRY ZONE**
 - 🟢 BUY ZONE → area aman masuk
