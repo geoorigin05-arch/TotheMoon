@@ -1,190 +1,133 @@
-import os
-import pytz
+import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import streamlit as st
+import datetime as dt
+import matplotlib.pyplot as plt
 
-from datetime import datetime
-from streamlit_autorefresh import st_autorefresh
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
-from telegram import Bot
-from telegram.error import InvalidToken
-
-# =====================================================
-# STREAMLIT CONFIG
-# =====================================================
+# ==============================
+# CONFIG
+# ==============================
 st.set_page_config(
     page_title="AI Stock Trading System FINAL++",
-    layout="wide",
-    initial_sidebar_state="collapsed"
+    layout="centered"
 )
 
 st.title("📊 AI Stock Trading System (FINAL++)")
 
-# =====================================================
-# AUTO REFRESH (ANTI SLEEP)
-# =====================================================
-st_autorefresh(interval=60_000, key="refresh")
+# ==============================
+# SIDEBAR INPUT
+# ==============================
+st.sidebar.header("⚙️ Parameter")
 
-# =====================================================
-# TELEGRAM (SAFE INIT)
-# =====================================================
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
+symbol = st.sidebar.text_input("Kode Saham IDX (.JK)", "GOTO.JK")
+period = st.sidebar.selectbox("Periode Data", ["3mo", "6mo", "1y"], index=1)
 
-bot = None
-if BOT_TOKEN:
-    try:
-        bot = Bot(token=BOT_TOKEN)
-    except InvalidToken:
-        st.warning("⚠️ BOT_TOKEN tidak valid")
+mode = st.sidebar.selectbox("Mode Trading", ["Swing", "Scalping"])
 
-def send_alert(message):
-    if bot is None or CHAT_ID is None:
-        return
-    try:
-        bot.send_message(chat_id=CHAT_ID, text=message)
-    except Exception:
-        pass
+modal = st.sidebar.number_input("Modal (Rp)", value=10_000_000, step=500_000)
+risk_pct = st.sidebar.slider("Risk per Trade (%)", 1, 20, 2)
 
-# =====================================================
-# JAM BURSA IDX
-# =====================================================
-tz = pytz.timezone("Asia/Jakarta")
-now = datetime.now(tz)
-
-market_open = now.replace(hour=9, minute=0, second=0, microsecond=0)
-market_close = now.replace(hour=15, minute=0, second=0, microsecond=0)
-is_market_open = market_open <= now <= market_close
-
-# =====================================================
-# INPUT USER
-# =====================================================
-ticker = st.text_input("Kode Saham IDX (.JK)", "GOTO.JK")
-period = st.selectbox("Periode Data", ["6mo", "1y", "2y"])
-
-modal = st.number_input("Modal (Rp)", value=10_000_000, step=1_000_000)
-risk_pct = st.slider("Risk per Trade (%)", 1, 5, 2)
-
-# =====================================================
+# ==============================
 # LOAD DATA
-# =====================================================
-@st.cache_data(ttl=300)
-def load_data(ticker, period):
-    return yf.download(ticker, period=period, progress=False)
+# ==============================
+df = yf.download(symbol, period=period, interval="1d")
+df.dropna(inplace=True)
 
-df = load_data(ticker, period)
-
-if df.empty or len(df) < 20:
-    st.error("❌ Data terlalu sedikit (<20 candle). Tidak bisa dianalisis.")
+if len(df) < 20:
+    st.error("❌ Data terlalu sedikit (kurang dari 20 candle)")
     st.stop()
 
-data_len = len(df)
+# ==============================
+# INDICATORS
+# ==============================
+window_fast = 9 if mode == "Scalping" else 20
+window_slow = 20 if mode == "Scalping" else 50
 
-# =====================================================
-# ADAPTIVE MODE
-# =====================================================
-if data_len < 50:
-    ai_enabled = False
-    st.warning("⚠️ Data terbatas — AI & MA50 nonaktif (Mode IPO / Saham Baru)")
-else:
-    ai_enabled = True
-
-# =====================================================
-# INDIKATOR
-# =====================================================
-df["MA20"] = df["Close"].rolling(20).mean()
-
-if ai_enabled:
-    df["MA50"] = df["Close"].rolling(50).mean()
-else:
-    df["MA50"] = df["MA20"]  # fallback aman
+df["MA_fast"] = df["Close"].rolling(window_fast).mean()
+df["MA_slow"] = df["Close"].rolling(window_slow).mean()
 
 # RSI
 delta = df["Close"].diff()
-gain = delta.where(delta > 0, 0).rolling(14).mean()
-loss = -delta.where(delta < 0, 0).rolling(14).mean()
-rs = gain / loss
+gain = delta.clip(lower=0)
+loss = -delta.clip(upper=0)
+avg_gain = gain.rolling(14).mean()
+avg_loss = loss.rolling(14).mean()
+rs = avg_gain / avg_loss
 df["RSI"] = 100 - (100 / (1 + rs))
 
 # MACD
-ema12 = df["Close"].ewm(span=12, adjust=False).mean()
-ema26 = df["Close"].ewm(span=26, adjust=False).mean()
+ema12 = df["Close"].ewm(span=12).mean()
+ema26 = df["Close"].ewm(span=26).mean()
 df["MACD"] = ema12 - ema26
-df["Signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
+df["Signal"] = df["MACD"].ewm(span=9).mean()
 
 df.dropna(inplace=True)
 
-# =====================================================
-# SAFE SCALAR VALUES
-# =====================================================
 price = float(df["Close"].iloc[-1])
-ma20 = float(df["MA20"].iloc[-1])
-ma50 = float(df["MA50"].iloc[-1])
-rsi_val = float(df["RSI"].iloc[-1])
+rsi = float(df["RSI"].iloc[-1])
+macd = float(df["MACD"].iloc[-1])
+signal = float(df["Signal"].iloc[-1])
 
-macd_now = float(df["MACD"].iloc[-1])
-signal_now = float(df["Signal"].iloc[-1])
-macd_prev = float(df["MACD"].iloc[-2])
-signal_prev = float(df["Signal"].iloc[-2])
+# ==============================
+# ENTRY ZONE
+# ==============================
+support = df["Low"].rolling(20).min().iloc[-1]
+resistance = df["High"].rolling(20).max().iloc[-1]
 
-support = float(df["Low"].rolling(20).min().iloc[-1])
+buy_zone_low = support * 1.02
+buy_zone_high = df["MA_fast"].iloc[-1]
 
-# =====================================================
-# AI MODEL (OPTIONAL)
-# =====================================================
+sell_zone_low = resistance * 0.98
+sell_zone_high = resistance * 1.05
+
+# ==============================
+# SCORING SYSTEM
+# ==============================
+score = 0
+
+if price > df["MA_fast"].iloc[-1]:
+    score += 1
+if macd > signal:
+    score += 1
+if rsi < 70:
+    score += 1
+if rsi < 30:
+    score += 1
+
+# ==============================
+# AI MODEL (ADAPTIVE)
+# ==============================
+ai_enabled = len(df) >= 50
+ai_prob = 0.5
+
 if ai_enabled:
     df["Target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
 
-    features = ["RSI", "MACD", "MA20", "MA50"]
+    features = ["RSI", "MACD", "MA_fast", "MA_slow"]
     X = df[features]
     y = df["Target"]
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    model = LogisticRegression(max_iter=200)
+    model = LogisticRegression(max_iter=300)
     model.fit(X_scaled[:-1], y[:-1])
 
-    latest_features = scaler.transform([df[features].iloc[-1]])
-    ai_prob = float(model.predict_proba(latest_features)[0][1])
-else:
-    ai_prob = 0.5  # netral
+    latest = scaler.transform([X.iloc[-1]])
+    ai_prob = float(model.predict_proba(latest)[0][1])
 
-# =====================================================
-# SCORING SYSTEM (ADAPTIVE)
-# =====================================================
-score = 0
-
-# Trend
-if price > ma20:
-    score += 1
-if ma20 > ma50:
-    score += 1
-
-# Momentum
-if rsi_val < 30:
-    score += 1
-elif rsi_val > 70:
-    score -= 1
-
-# MACD
-if macd_prev < signal_prev and macd_now > signal_now:
-    score += 1
-elif macd_prev > signal_prev and macd_now < signal_now:
-    score -= 1
-
-# AI influence (only if enabled)
-if ai_enabled:
     if ai_prob > 0.6:
         score += 1
     elif ai_prob < 0.4:
         score -= 1
 
-# Final decision
+# ==============================
+# DECISION
+# ==============================
 if score >= 3:
     decision = "BUY"
 elif score <= -2:
@@ -192,53 +135,99 @@ elif score <= -2:
 else:
     decision = "HOLD"
 
-# =====================================================
+# ==============================
+# CONFIDENCE
+# ==============================
+if score >= 4:
+    confidence = "🟢 HIGH"
+elif score >= 2:
+    confidence = "🟡 MEDIUM"
+else:
+    confidence = "🔴 LOW"
+
+# ==============================
 # RISK MANAGEMENT
-# =====================================================
+# ==============================
 risk_amount = modal * (risk_pct / 100)
-stop_loss = support * 0.98
-risk_per_share = max(price - stop_loss, 1)
-lot_size = int(risk_amount / risk_per_share)
+stop_loss = support
+risk_per_share = abs(price - stop_loss)
+max_lot = int(risk_amount / risk_per_share) if risk_per_share > 0 else 0
 
-# =====================================================
-# TELEGRAM ALERT (ANTI-SPAM)
-# =====================================================
-if "last_signal" not in st.session_state:
-    st.session_state.last_signal = ""
+# ==============================
+# DISPLAY METRICS
+# ==============================
+st.subheader("📊 Ringkasan")
 
-if is_market_open and decision != "HOLD" and decision != st.session_state.last_signal:
-    send_alert(
-        f"📊 AI SIGNAL\n"
-        f"Saham: {ticker}\n"
-        f"Signal: {decision}\n"
-        f"Harga: {price:,.2f}\n"
-        f"AI Prob: {ai_prob:.2f}\n"
-        f"Mode: {'AI' if ai_enabled else 'Rule-Based'}"
-    )
-    st.session_state.last_signal = decision
-
-# =====================================================
-# DASHBOARD
-# =====================================================
-c1, c2, c3, c4, c5 = st.columns(5)
-
+c1, c2, c3 = st.columns(3)
 c1.metric("Harga", f"{price:,.2f}")
-c2.metric("RSI", f"{rsi_val:.2f}")
+c2.metric("RSI", f"{rsi:.2f}")
 c3.metric("AI Prob", f"{ai_prob:.2f}")
-c4.metric("Score", score)
-c5.metric("Decision", decision)
 
+st.metric("Score", score)
+st.metric("Decision", decision)
+st.metric("Confidence", confidence)
+
+# ==============================
+# ENTRY ZONE DISPLAY
+# ==============================
+st.subheader("📍 Entry Zone")
+st.write(f"🟢 BUY ZONE : {buy_zone_low:,.0f} – {buy_zone_high:,.0f}")
+st.write(f"🔴 SELL ZONE : {sell_zone_low:,.0f} – {sell_zone_high:,.0f}")
+
+# ==============================
+# BACKTEST EQUITY CURVE
+# ==============================
+st.subheader("📈 Backtest – Equity Curve")
+
+equity = [modal]
+position = 0
+
+for i in range(1, len(df)):
+    if df["Close"].iloc[i] > df["MA_fast"].iloc[i] and position == 0:
+        position = equity[-1] / df["Close"].iloc[i]
+    elif df["Close"].iloc[i] < df["MA_fast"].iloc[i] and position > 0:
+        equity.append(position * df["Close"].iloc[i])
+        position = 0
+    else:
+        equity.append(equity[-1])
+
+equity = equity[:len(df)]
+
+fig, ax = plt.subplots()
+ax.plot(df.index[:len(equity)], equity)
+ax.set_ylabel("Equity (Rp)")
+ax.set_xlabel("Tanggal")
+st.pyplot(fig)
+
+# ==============================
+# RISK INFO
+# ==============================
 st.subheader("📌 Risk Management")
-st.write(f"""
-- Modal: Rp {modal:,.0f}  
-- Risk per Trade: {risk_pct}%  
-- Risk Amount: Rp {risk_amount:,.0f}  
-- Stop Loss: Rp {stop_loss:,.2f}  
-- Max Lot (estimasi): {lot_size:,}
+st.write(f"Modal: Rp {modal:,.0f}")
+st.write(f"Risk per Trade: {risk_pct}%")
+st.write(f"Risk Amount: Rp {risk_amount:,.0f}")
+st.write(f"Stop Loss: {stop_loss:,.2f}")
+st.write(f"Max Lot (estimasi): {max_lot:,}")
+
+# ==============================
+# NOTE / BASKET
+# ==============================
+with st.expander("🧠 Cara Membaca Hasil (PENTING)", expanded=False):
+    st.markdown("""
+### 📍 ENTRY ZONE
+- **🟢 BUY ZONE** → tempat **AMAN masuk**
+- **🔴 SELL ZONE** → target / distribusi
+
+### 📈 EQUITY CURVE
+- Naik stabil → strategi sehat
+- Banyak drawdown → jangan agresif
+
+### 🎯 CONFIDENCE
+- 🟢 HIGH → size normal
+- 🟡 MEDIUM → kecilkan size
+- 🔴 LOW → tunggu
+
+📌 *Gunakan sistem ini sebagai alat bantu, bukan keputusan emosional.*
 """)
 
-st.caption(
-    f"Mode: {'AI Aktif' if ai_enabled else 'Rule-Based (Data Terbatas)'} | "
-    f"Data Candle: {data_len} | "
-    "FINAL++ Streamlit Cloud Ready"
-)
+st.caption("AI Aktif" if ai_enabled else "AI Nonaktif (data terbatas)")
