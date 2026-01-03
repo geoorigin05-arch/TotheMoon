@@ -12,11 +12,11 @@ from sklearn.preprocessing import StandardScaler
 # CONFIG
 # ==============================
 st.set_page_config(
-    page_title="AI Stock Trading System FINAL++",
+    page_title="STOCK MONITORING System",
     layout="centered"
 )
 
-st.title("📊 AI Stock Trading System (FINAL++)")
+st.title("📊 Stock Trading System")
 
 # ==============================
 # SIDEBAR INPUT
@@ -73,16 +73,18 @@ macd = float(df["MACD"].iloc[-1])
 signal = float(df["Signal"].iloc[-1])
 
 # ==============================
-# ENTRY ZONE
+# ENTRY ZONE (SAFE FLOAT)
 # ==============================
-support = df["Low"].rolling(20).min().iloc[-1]
-resistance = df["High"].rolling(20).max().iloc[-1]
+support = float(df["Low"].rolling(20).min().iloc[-1])
+resistance = float(df["High"].rolling(20).max().iloc[-1])
 
-buy_zone_low = support * 1.02
-buy_zone_high = df["MA_fast"].iloc[-1]
+ma_fast = float(df["MA_fast"].iloc[-1])
 
-sell_zone_low = resistance * 0.98
-sell_zone_high = resistance * 1.05
+buy_zone_low = float(support * 1.02)
+buy_zone_high = float(ma_fast)
+
+sell_zone_low = float(resistance * 0.98)
+sell_zone_high = float(resistance * 1.05)
 
 # ==============================
 # SCORING SYSTEM
