@@ -1,70 +1,63 @@
 import yfinance as yf
 import pandas as pd
-import numpy as np
 
-def fetch_price(symbol, period="1y"):
+# ===============================
+# Fungsi existing
+# ===============================
+def fetch_price(symbol: str) -> pd.DataFrame:
     """
-    Fetch historical price data with indicators.
-    Returns None jika data kosong / error.
+    Fetch historical price data lengkap (untuk scan universe)
     """
     try:
-        df = yf.download(symbol, period=period, auto_adjust=True, progress=False)
-
-        if df is None or df.empty:
-            return None
-        if "Close" not in df.columns:
-            return None
-
-        # Indicators
-        df["MA50"] = df["Close"].rolling(50).mean()
-        df["MA200"] = df["Close"].rolling(200).mean()
-
-        delta = df["Close"].diff()
-        gain = delta.clip(lower=0).rolling(14).mean()
-        loss = -delta.clip(upper=0).rolling(14).mean()
-        rs = gain / loss
-        df["RSI"] = 100 - (100 / (1 + rs))
-
-        df["Support"] = df["Low"].rolling(20).min()
-        df["Resistance"] = df["High"].rolling(20).max()
-
-        df = df.dropna()
+        df = yf.download(symbol, period="1y", interval="1d")
         if df.empty:
             return None
+        df.reset_index(inplace=True)
+        df.rename(columns={"Close": "Close"}, inplace=True)
 
+        # Hitung indikator
+        df["MA200"] = df["Close"].rolling(200).mean()
+        df["RSI"] = compute_rsi(df["Close"])
+        df["Support"] = df["Close"].rolling(20).min()
+        df["Resistance"] = df["Close"].rolling(20).max()
         return df
-
     except Exception as e:
-        print(f"⚠️ Fetch error {symbol}: {e}")
+        print("fetch_price error:", e)
         return None
 
-def scan_universe(symbols, limit=50):
+# ===============================
+# Fungsi baru untuk manual/live input
+# ===============================
+def fetch_price_latest(symbol: str) -> pd.DataFrame:
     """
-    Scan IDX universe and return top candidates.
+    Fetch harga terbaru + indikator cepat (ringan)
     """
-    results = []
+    try:
+        df = yf.download(symbol, period="60d", interval="1d")  # data lebih pendek → cepat
+        if df.empty:
+            return None
+        df.reset_index(inplace=True)
+        df.rename(columns={"Close": "Close"}, inplace=True)
 
-    for s in symbols:
-        df = fetch_price(s)
-        if df is None:
-            continue
+        # indikator ringan
+        df["MA200"] = df["Close"].rolling(200).mean()
+        df["RSI"] = compute_rsi(df["Close"])
+        df["Support"] = df["Close"].rolling(20).min()
+        df["Resistance"] = df["Close"].rolling(20).max()
+        return df
+    except Exception as e:
+        print("fetch_price_latest error:", e)
+        return None
 
-        last = df.iloc[-1]
-        close = float(last["Close"])
-        ma50 = float(last["MA50"])
-        ma200 = float(last["MA200"])
-        rsi = float(last["RSI"])
-
-        # Trend bullish filter, RSI flexible
-        if ma50 > ma200:
-            trend_score = ma50 / ma200
-            momentum = (close - ma50) / ma50
-            results.append({
-                "Symbol": s,
-                "Close": close,
-                "RSI": rsi,
-                "TrendScore": trend_score,
-                "Momentum": momentum
-            })
-
-    return pd.DataFrame(results)
+# ===============================
+# Fungsi RSI helper
+# ===============================
+def compute_rsi(series, period=14):
+    delta = series.diff()
+    gain = delta.where(delta>0,0.0)
+    loss = -delta.where(delta<0,0.0)
+    avg_gain = gain.rolling(period).mean()
+    avg_loss = loss.rolling(period).mean()
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100/(1+rs))
+    return rsi
