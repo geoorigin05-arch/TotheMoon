@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 
 # ======================================================
-# PAGE
+# PAGE CONFIG
 # ======================================================
 st.set_page_config(page_title="IDX Professional Trading System", layout="wide")
 st.title("📊 IDX Professional Trading System")
@@ -29,38 +29,33 @@ def load_idx_universe():
 
 @st.cache_data
 def scan_market(ticker):
-    df = yf.download(ticker, period="1y", progress=False, auto_adjust=True)
-
+    df = yf.download(ticker, period="1y", auto_adjust=True, progress=False)
     if df.empty or len(df) < 220:
         return None
 
     df["MA50"] = df["Close"].rolling(50).mean()
     df["MA200"] = df["Close"].rolling(200).mean()
     df.dropna(inplace=True)
-
     if df.empty:
         return None
 
     last = df.iloc[-1]
-
     close = float(last["Close"])
-    ma50  = float(last["MA50"])
+    ma50 = float(last["MA50"])
     ma200 = float(last["MA200"])
 
-    bullish = close > ma50 > ma200
+    if close > ma50 > ma200:
+        return {"ticker": ticker, "price": close}
 
-    return {
-        "ticker": ticker,
-        "price": close,
-        "bullish": bullish
-    }
+    return None
+
 
 st.subheader("🔥 Saham Potensial IDX (Auto – Market Insight)")
 
 candidates = []
 for t in load_idx_universe():
     r = scan_market(t)
-    if r and r["bullish"]:
+    if r:
         candidates.append(r)
 
 if candidates:
@@ -76,17 +71,17 @@ else:
 st.divider()
 
 # ======================================================
-# 🎯 MAIN ANALYSIS (SAHAM INPUT)
+# 🎯 MAIN ANALYSIS (INPUT SAHAM)
 # ======================================================
 st.sidebar.header("⚙️ Analisa Saham")
 symbol = st.sidebar.text_input("Kode Saham (.JK)", "BBCA.JK")
 modal = st.sidebar.number_input("Modal (Rp)", value=10_000_000, step=1_000_000)
-risk_pct = st.sidebar.slider("Risk (%)", 1, 10, 2)
+risk_pct = st.sidebar.slider("Risk per Trade (%)", 1, 10, 2)
 
-df = yf.download(symbol, period="1y", progress=False, auto_adjust=True)
+df = yf.download(symbol, period="1y", auto_adjust=True, progress=False)
 
 if df.empty or len(df) < 220:
-    st.error("❌ Data tidak cukup untuk analisa profesional")
+    st.error("❌ Data tidak cukup untuk analisa")
     st.stop()
 
 # ======================================================
@@ -103,7 +98,6 @@ rs = gain.rolling(14).mean() / loss.rolling(14).mean()
 df["RSI"] = 100 - (100 / (1 + rs))
 
 df.dropna(inplace=True)
-
 last = df.iloc[-1]
 
 price = float(last["Close"])
@@ -127,7 +121,7 @@ else:
 if rsi < 70:
     buy.append("RSI sehat")
 elif rsi > 70:
-    sell.append("RSI overbought")
+    sell.append("RSI overbought (potensi koreksi)")
 
 if price <= support * 1.02:
     buy.append("Harga dekat support")
@@ -135,6 +129,9 @@ if price <= support * 1.02:
 if price >= resistance * 0.98:
     sell.append("Harga dekat resistance")
 
+# ======================================================
+# FINAL DECISION
+# ======================================================
 if len(buy) >= 3:
     decision = "BUY"
 elif len(sell) >= 2:
@@ -143,7 +140,7 @@ else:
     decision = "WAIT"
 
 # ======================================================
-# OUTPUT
+# OUTPUT SNAPSHOT
 # ======================================================
 st.subheader(f"📌 Decision: **{decision}**")
 
@@ -152,6 +149,9 @@ c1.metric("Harga", f"{int(price):,}")
 c2.metric("RSI", f"{rsi:.1f}")
 c3.metric("Trend", "BULLISH" if price > ma200 else "BEARISH")
 
+# ======================================================
+# ALASAN KEPUTUSAN (LENGKAP)
+# ======================================================
 st.divider()
 st.subheader("🧠 Alasan Keputusan")
 
@@ -178,6 +178,30 @@ else:  # WAIT
         st.info("⏳ Pertimbangan tambahan:")
         for r in wait:
             st.info("• " + r)
+
+# ======================================================
+# ACTION PLAN (BUY / SELL / WAIT JELAS)
+# ======================================================
+buy_area_low = support * 1.01
+buy_area_high = support * 1.03
+sell_area_low = resistance * 0.99
+sell_area_high = resistance * 1.03
+
+st.divider()
+st.subheader("📍 Rencana Aksi (Action Plan)")
+
+if decision == "BUY":
+    st.success(f"🟢 BUY di area: {int(buy_area_low):,} – {int(buy_area_high):,}")
+    st.info(f"🎯 SELL / TP di area: {int(sell_area_low):,} – {int(sell_area_high):,}")
+
+elif decision == "SELL":
+    st.error(f"🔴 SELL di area: {int(sell_area_low):,} – {int(sell_area_high):,}")
+    st.info("⏳ BUY ulang hanya jika harga kembali ke support")
+
+else:  # WAIT
+    st.warning("⏳ WAIT – menunggu harga ideal")
+    st.info(f"🟢 BUY jika pullback ke: {int(buy_area_low):,} – {int(buy_area_high):,}")
+    st.info(f"🔴 SELL / TAKE PROFIT di: {int(sell_area_low):,} – {int(sell_area_high):,}")
 
 # ======================================================
 # RISK MANAGEMENT
