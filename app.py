@@ -27,7 +27,7 @@ IDX = load_idx_universe()
 # ===============================
 mode = st.radio(
     "🧭 Mode Analisa",
-    ["🔥 Auto IDX Scan (Top 50 Ranked)", "🎯 Analisa Saham Manual"]
+    ["🔥 Auto IDX Scan (Top 10 Ranked)", "🎯 Analisa Saham Manual"]
 )
 
 # ===============================
@@ -64,7 +64,7 @@ if mode == "🔥 Auto IDX Scan (Top 50 Ranked)":
     # Cache scan per hari → cepat dan ringan
     @st.cache_data(show_spinner=False)
     def get_scan_df():
-        df_scan = scan_universe(IDX, limit=50)
+        df_scan = scan_universe(IDX, limit=10)
         # Hanya ambil saham valid
         df_scan = df_scan[df_scan["Close"].notna()]
         return df_scan
