@@ -1,5 +1,5 @@
 import streamlit as st
-from data_engine import scan_universe, fetch_price_latest
+from data_engine import scan_universe, fetch_price, fetch_price_latest
 from scoring import rank_stocks
 from ai_model import ai_confidence
 import pandas as pd
