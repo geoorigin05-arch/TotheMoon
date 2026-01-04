@@ -20,14 +20,6 @@ CHAT_ID = os.getenv("CHAT_ID")
 bot = Bot(token=BOT_TOKEN) if BOT_TOKEN else None
 
 # ======================================================
-# TIMEZONE & MARKET HOURS
-# ======================================================
-tz = pytz.timezone("Asia/Jakarta")
-now = datetime.now(tz)
-is_weekday = now.weekday() < 5
-is_market_hour = is_weekday and (9 <= now.hour < 15)
-
-# ======================================================
 # PAGE CONFIG
 # ======================================================
 st.set_page_config(page_title="Professional Stock System", layout="centered")
@@ -74,25 +66,18 @@ df["MACD"] = ema12 - ema26
 df["Signal"] = df["MACD"].ewm(span=9).mean()
 
 # ======================================================
-# ADAPTIVE TREND MA (ANTI ERROR)
+# ADAPTIVE TREND MA
 # ======================================================
-if len(df) >= 200:
-    trend_len = 200
-elif len(df) >= 100:
-    trend_len = 100
-else:
-    trend_len = 50
-
+trend_len = 200 if len(df) >= 200 else 100 if len(df) >= 100 else 50
 df["MA_trend"] = df["Close"].rolling(trend_len).mean()
 
 df.dropna(inplace=True)
-
 if df.empty:
     st.error("❌ Data habis setelah perhitungan indikator")
     st.stop()
 
 # ======================================================
-# LATEST VALUES
+# SCALAR VALUES (ANTI ERROR)
 # ======================================================
 price = float(df["Close"].iloc[-1])
 rsi = float(df["RSI"].iloc[-1])
@@ -104,36 +89,34 @@ trend_ma = float(df["MA_trend"].iloc[-1])
 trend_bias = "BULLISH" if price > trend_ma else "BEARISH"
 
 # ======================================================
-# SUPPORT & RESISTANCE
+# SUPPORT & RESISTANCE (PASTI SCALAR)
 # ======================================================
-support = df["Low"].rolling(20).min().iloc[-1]
-resistance = df["High"].rolling(20).max().iloc[-1]
+support = float(df["Low"].rolling(20).min().iloc[-1])
+resistance = float(df["High"].rolling(20).max().iloc[-1])
 
 # ======================================================
-# ENTRY ZONES
+# ENTRY ZONE (VALIDASI NAN)
 # ======================================================
-buy_zone_low = support * 1.02 if support > 0 else np.nan
-buy_zone_high = ma_fast if ma_fast > 0 else np.nan
-sell_zone = resistance * 0.98 if resistance > 0 else np.nan
+buy_zone_low = support * 1.02 if not np.isnan(support) else np.nan
+buy_zone_high = ma_fast if not np.isnan(ma_fast) else np.nan
+sell_zone = resistance * 0.98 if not np.isnan(resistance) else np.nan
 
 # ======================================================
-# SCORING SYSTEM
+# SCORING
 # ======================================================
 score = 0
-score += 1 if price > ma_fast else 0
-score += 1 if macd > signal else 0
-score += 1 if rsi < 70 else 0
-score += 1 if trend_bias == "BULLISH" else 0
+score += price > ma_fast
+score += macd > signal
+score += rsi < 70
+score += trend_bias == "BULLISH"
 
 # ======================================================
-# AI MODEL (AUTO DISABLE JIKA DATA KURANG)
+# AI MODEL (OPTIONAL)
 # ======================================================
 ai_prob = "-"
 if len(df) >= 60:
     df["Target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
-    features = ["RSI", "MACD", "MA_fast", "MA_slow"]
-
-    X = df[features]
+    X = df[["RSI", "MACD", "MA_fast", "MA_slow"]]
     y = df["Target"]
 
     scaler = StandardScaler()
@@ -164,19 +147,19 @@ risk_amount = modal * (risk_pct / 100)
 stop_loss = support
 risk_per_share = price - stop_loss
 
-max_lot = int(risk_amount / (risk_per_share * 100)) if risk_per_share > 0 else 0
-
 reward = sell_zone - price if sell_zone > price else 0
 rr_ratio = reward / risk_per_share if risk_per_share > 0 and reward > 0 else 0
 
+max_lot = int(risk_amount / (risk_per_share * 100)) if risk_per_share > 0 else 0
+
 # ======================================================
-# SAFE FORMATTER (ANTI ERROR UI)
+# SAFE FORMATTER
 # ======================================================
 def safe_price(x):
     return "-" if pd.isna(x) or np.isinf(x) else f"{int(x):,}"
 
 # ======================================================
-# UI OUTPUT
+# UI
 # ======================================================
 st.divider()
 st.subheader("📊 Market Snapshot")
@@ -191,9 +174,6 @@ st.markdown(f"### 📌 Decision: **{decision}**")
 st.markdown(f"Confidence: **{confidence}**")
 st.markdown(f"Risk/Reward: **{rr_ratio:.2f}R**")
 
-# ======================================================
-# ENTRY ZONE
-# ======================================================
 st.divider()
 st.subheader("📍 Entry Zone")
 
@@ -201,9 +181,6 @@ z1, z2 = st.columns(2)
 z1.success(f"🟢 BUY ZONE\n{safe_price(buy_zone_low)} – {safe_price(buy_zone_high)}")
 z2.error(f"🔴 SELL ZONE\n{safe_price(sell_zone)}")
 
-# ======================================================
-# RISK MANAGEMENT
-# ======================================================
 st.divider()
 st.subheader("📌 Risk Management")
 
@@ -212,4 +189,4 @@ r1.metric("Risk Amount", f"Rp {risk_amount:,.0f}")
 r2.metric("Stop Loss", safe_price(stop_loss))
 r3.metric("Max Lot", f"{max_lot:,}")
 
-st.caption("📌 Sistem ini adalah decision support — disiplin risk management tetap nomor satu.")
+st.caption("📌 NO TRADE adalah kondisi profesional. Disiplin > FOMO.")
