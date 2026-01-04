@@ -1,4 +1,4 @@
-from stockbit_downloader import Stockbit_Downloader
+from stockbit_downloader import StockbitDownloader
 from stockbit_parser import parse_fundamental_from_html
 
 _downloader = None
