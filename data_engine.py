@@ -26,7 +26,7 @@ def fetch_price(symbol, period="1y"):
 
     return df
 
-def scan_universe(symbols, limit=20):
+def scan_universe(symbols, limit=50):
     results = []
 
     for s in symbols:
@@ -35,21 +35,21 @@ def scan_universe(symbols, limit=20):
             continue
 
         last = df.iloc[-1]
-
         close = float(last["Close"])
         ma50 = float(last["MA50"])
         ma200 = float(last["MA200"])
         rsi = float(last["RSI"])
 
-        if close > ma50 and ma50 > ma200 and rsi < 70:
+        # Trend bullish atau bearish, tapi jangan filter RSI
+        if ma50 > ma200:
+            trend_score = ma50 / ma200
+            momentum = (close - ma50) / ma50
             results.append({
                 "Symbol": s,
                 "Close": close,
                 "RSI": rsi,
-                "TrendScore": ma50 / ma200
+                "TrendScore": trend_score,
+                "Momentum": momentum
             })
-
-        if len(results) >= limit:
-            break
 
     return pd.DataFrame(results)
