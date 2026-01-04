@@ -1,16 +1,16 @@
 import streamlit as st
 import pandas as pd
-from data_engine import scan_universe, fetch_price
+from data_engine import fetch_price
 from scoring import rank_stocks
 from ai_model import ai_confidence
 
 st.set_page_config(
-    page_title="IDX Professional Trading System v2.4",
+    page_title="IDX Professional Trading System v2.4 Update",
     layout="wide"
 )
 
-st.title("📊 IDX Professional Trading System v2.4")
-st.caption("Top-50 IDX Scan + Manual Input Stabil + AI Confidence + Level Guidance")
+st.title("📊 IDX Professional Trading System v2.4 Update")
+st.caption("Top-10 IDX Scan + Manual Input Stabil + AI Confidence + Level Guidance")
 
 # ===============================
 # LOAD IDX UNIVERSE
@@ -23,14 +23,6 @@ def load_idx_universe():
 IDX = load_idx_universe()
 
 # ===============================
-# MODE SELECTION
-# ===============================
-mode = st.radio(
-    "🧭 Mode Analisa",
-    ["🔥 Auto IDX Scan (Top 50 Ranked)", "🎯 Analisa Saham Manual"]
-)
-
-# ===============================
 # FETCH PRICE CACHED (per symbol) - Stabil
 # ===============================
 @st.cache_data(show_spinner=False)
@@ -38,7 +30,7 @@ def fetch_price_cached(symbol):
     df = fetch_price(symbol)
     if df is None or df.empty:
         return None
-    # Pastikan pakai Adjusted Close
+    # Pastikan pakai Adjusted Close jika ada
     if "Adj Close" in df.columns:
         df["Close"] = df["Adj Close"]
     # Hitung indikator jika belum ada
@@ -56,20 +48,38 @@ def fetch_price_cached(symbol):
     return df.dropna()
 
 # ===============================
-# AUTO IDX SCAN
+# MODE SELECTION
 # ===============================
-if mode == "🔥 Auto IDX Scan (Top 50 Ranked)":
-    st.subheader("🔥 IDX Market Scan — Top Ranked + Trending + Grade A/B/C")
+mode = st.radio(
+    "🧭 Mode Analisa",
+    ["🔥 Auto IDX Scan (Top 10 Trending)", "🎯 Analisa Saham Manual"]
+)
 
-    # Cache scan per hari → cepat dan ringan
+# ===============================
+# AUTO IDX SCAN - TOP 10
+# ===============================
+if mode == "🔥 Auto IDX Scan (Top 10 Trending)":
+    st.subheader("🔥 IDX Market Scan — Top 10 Trending + Grade A/B/C")
+
     @st.cache_data(show_spinner=False)
-    def get_scan_df():
-        df_scan = scan_universe(IDX, limit=50)
-        # Hanya ambil saham valid
-        df_scan = df_scan[df_scan["Close"].notna()]
-        return df_scan
+    def get_top10_scan(idx_list):
+        dfs = []
+        for s in idx_list:
+            df = fetch_price_cached(s)
+            if df is None or df.empty:
+                continue
+            last = df.iloc[-1].copy()
+            last["Symbol"] = s
+            # TrendScore sederhana: RSI + MA50/MA200 ratio
+            last["TrendScore"] = (last["Close"]/last["MA50"] + last["Close"]/last["MA200"] + last["RSI"]/100)
+            dfs.append(last)
+        if not dfs:
+            return pd.DataFrame()
+        scan_df = pd.DataFrame(dfs)
+        scan_df.sort_values(by="TrendScore", ascending=False, inplace=True)
+        return scan_df.head(10)
 
-    scan_df = get_scan_df()
+    scan_df = get_top10_scan(IDX)
     if scan_df.empty:
         st.warning("Tidak ada saham memenuhi kriteria")
         st.stop()
@@ -118,15 +128,14 @@ else:
     )
 
 # ===============================
-# FETCH DATA
+# FETCH DATA STABIL
 # ===============================
 df = fetch_price_cached(symbol)
 if df is None or df.empty:
-    st.warning(f"❌ Data untuk {symbol} tidak tersedia / terlalu sedikit")
+    st.warning(f"❌ Data untuk {symbol} tidak tersedia / terlalu sedikit. Cek simbol atau pilih saham lain.")
     st.stop()
 
 last = df.iloc[-1]
-
 price = float(last["Close"])
 ma200 = float(last["MA200"])
 rsi = float(last["RSI"])
@@ -139,14 +148,13 @@ trend = "BULLISH" if price > ma200 else "BEARISH"
 # ===============================
 st.divider()
 st.subheader(f"📌 {symbol} — {trend}")
-
 c1, c2, c3 = st.columns(3)
 c1.metric("Harga", int(price))
 c2.metric("RSI", round(rsi, 1))
 c3.metric("Trend", trend)
 
 # ===============================
-# DECISION ENGINE + LEVELS + RISK
+# DECISION + LEVELS + RISK MANAGEMENT
 # ===============================
 decision = "WAIT"
 buy_area = (0, 0)
@@ -165,7 +173,6 @@ elif rsi > 70 or price >= resistance * 0.97:
 else:
     buy_area = (support, support * 1.08)  # WAIT → target entry
 
-# Max lot realistis per modal
 max_lot = int(modal_rp / price / lot_size)
 
 st.subheader(f"🧠 Decision: {decision}")
