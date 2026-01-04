@@ -34,11 +34,9 @@ mode = st.radio(
 # MODE 1 — AUTO IDX SCAN
 # ===============================
 if mode == "🔥 Auto IDX Scan (Ranking)":
-
     st.subheader("🔥 IDX Market Scan — Top Ranked")
 
     scan_df = scan_universe(IDX, limit=20)
-
     if scan_df.empty:
         st.warning("Tidak ada saham memenuhi kriteria")
         st.stop()
@@ -69,21 +67,19 @@ else:
 # COMMON ANALYSIS (BOTH MODES)
 # ===============================
 df = fetch_price(symbol)
-
-if df is None:
+if df is None or df.empty:
     st.error("❌ Data tidak cukup / saham tidak valid")
     st.stop()
 
 last = df.iloc[-1]
 
 price = float(last["Close"])
+ma200 = float(last["MA200"])
 rsi = float(last["RSI"])
 support = float(last["Support"])
 resistance = float(last["Resistance"])
 
-ma200 = float(last["MA200"])
 trend = "BULLISH" if price > ma200 else "BEARISH"
-
 
 # ===============================
 # METRICS
