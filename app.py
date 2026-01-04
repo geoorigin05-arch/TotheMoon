@@ -23,42 +23,44 @@ def load_idx_universe():
 IDX = load_idx_universe()
 
 # ===============================
-# MODE SELECTION
+# MODE SELECTION (Manual default)
 # ===============================
 mode = st.radio(
     "🧭 Mode Analisa",
     ["🎯 Analisa Saham Manual", "🔥 Auto IDX Scan (Top 10 Ranked)"],
-    index=0  # Default Manual
+    index=0
 )
 
 # ===============================
-# MANUAL INPUT (DEFAULT)
+# MANUAL INPUT MODE
 # ===============================
 if mode == "🎯 Analisa Saham Manual":
     st.subheader("🎯 Analisa Saham Manual (Default Display)")
-
+    
     symbol_input = st.text_input("Masukkan Kode Saham (contoh: BBCA.JK)").upper().strip()
     modal_rp = st.number_input("💰 Modal Investasi (Rp)", value=100_000_000, step=10_000)
     refresh = st.button("🔄 Refresh Harga")
 
-    if symbol_input:
-        symbol = symbol_input
-        if refresh or "last_symbol" not in st.session_state or st.session_state.last_symbol != symbol:
-            df = fetch_price_latest(symbol)  # Ambil data terbaru & ringan
-            st.session_state.last_symbol = symbol
-            st.session_state.last_df = df
-        else:
-            df = st.session_state.get("last_df", None)
-
-        if df is None or df.empty:
-            st.warning(f"❌ Data untuk {symbol} tidak tersedia / terlalu sedikit.")
-            st.stop()
-    else:
+    if not symbol_input:
         st.info("Masukkan kode saham untuk mulai analisa.")
         st.stop()
 
+    symbol = symbol_input
+
+    # Fetch harga terbaru jika refresh atau simbol baru
+    if refresh or "last_symbol" not in st.session_state or st.session_state.last_symbol != symbol:
+        df = fetch_price_latest(symbol)
+        st.session_state.last_symbol = symbol
+        st.session_state.last_df = df
+    else:
+        df = st.session_state.get("last_df", None)
+
+    if df is None or df.empty:
+        st.warning(f"❌ Data untuk {symbol} tidak tersedia / terlalu sedikit.")
+        st.stop()
+
 # ===============================
-# AUTO IDX SCAN (Top 10)
+# AUTO TOP 10 SCAN MODE
 # ===============================
 else:
     st.subheader("🔥 IDX Market Scan — Top 10 Realistic")
@@ -68,6 +70,8 @@ else:
         scan_df = scan_universe(IDX, limit=10)
         if scan_df is None or scan_df.empty:
             return pd.DataFrame()
+        # pastikan MA200 valid
+        scan_df = scan_df.dropna(subset=["TrendScore"])
         return scan_df
 
     scan_df = get_top10_scan()
@@ -77,12 +81,16 @@ else:
 
     ranked = rank_stocks(scan_df)
     st.dataframe(
-        ranked[["Symbol", "Close", "RSI", "TrendScore", "Momentum", "Score", "Grade"]],
+        ranked[["Symbol","Close","RSI","TrendScore","Momentum","Score","Grade"]],
         use_container_width=True
     )
 
     symbol = st.selectbox("🎯 Analisa Detail Saham", ranked["Symbol"])
     df = fetch_price_latest(symbol)
+    if df is None or df.empty:
+        st.warning(f"❌ Data untuk {symbol} tidak tersedia / terlalu sedikit.")
+        st.stop()
+    modal_rp = 100_000_000  # default modal untuk auto
 
 # ===============================
 # SAFETY CHECK
@@ -92,7 +100,7 @@ if symbol is None or df is None or df.empty:
     st.stop()
 
 # ===============================
-# EXTRACT DATA
+# EXTRACT LATEST DATA
 # ===============================
 last = df.iloc[-1]
 price = float(last["Close"])
@@ -122,16 +130,16 @@ tp_price = None
 stop_loss = support * 0.97
 max_lot = int(modal_rp / price)
 
-# Decision logic + zones
-if trend == "BULLISH" and rsi < 70 and price <= support*1.08:
-    decision = "BUY"
-    buy_area = (support, support*1.08)
-    tp_price = resistance*0.97
-elif rsi > 70 or price >= resistance*0.97:
-    decision = "SELL"
-    sell_area = (resistance*0.97, resistance)
+# Logic Buy / Sell / Wait
+if trend=="BULLISH" and rsi<70 and price<=support*1.08:
+    decision="BUY"
+    buy_area=(support, support*1.08)
+    tp_price=resistance*0.97
+elif rsi>70 or price>=resistance*0.97:
+    decision="SELL"
+    sell_area=(resistance*0.97,resistance)
 else:
-    buy_area = (support, support*1.08)
+    buy_area=(support,support*1.08)
 
 # ===============================
 # DISPLAY DECISION & LEVELS
