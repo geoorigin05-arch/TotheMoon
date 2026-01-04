@@ -91,31 +91,39 @@ if len(df) < 60:
     st.stop()
 
 # ======================================================
-# INDICATORS
+# INDICATORS (ADAPTIVE & SAFE)
 # ======================================================
 fast = 9 if mode == "Scalping" else 20
 slow = 20 if mode == "Scalping" else 50
 
 df["MA_fast"] = df["Close"].rolling(fast).mean()
 df["MA_slow"] = df["Close"].rolling(slow).mean()
-df["MA_200"] = df["Close"].rolling(200).mean()
 
+# Adaptive Trend MA
+if len(df) >= 200:
+    trend_ma = 200
+elif len(df) >= 100:
+    trend_ma = 100
+else:
+    trend_ma = 50
+
+df["MA_trend"] = df["Close"].rolling(trend_ma).mean()
+
+# RSI
 delta = df["Close"].diff()
 gain = delta.clip(lower=0)
 loss = -delta.clip(upper=0)
 rs = gain.rolling(14).mean() / loss.rolling(14).mean()
 df["RSI"] = 100 - (100 / (1 + rs))
 
+# MACD
 ema12 = df["Close"].ewm(span=12).mean()
 ema26 = df["Close"].ewm(span=26).mean()
 df["MACD"] = ema12 - ema26
 df["Signal"] = df["MACD"].ewm(span=9).mean()
 
-df = df.dropna()
-
-if len(df) == 0:
-    st.error("❌ Data habis setelah perhitungan indikator")
-    st.stop()
+# Drop NaN secara selektif (AMAN)
+df = df.dropna(subset=["RSI", "MACD", "Signal", "MA_fast", "MA_slow", "MA_trend"])
 
 # ======================================================
 # SAFE LAST VALUES
