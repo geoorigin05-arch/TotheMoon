@@ -5,12 +5,12 @@ from scoring import rank_stocks
 from ai_model import ai_confidence
 
 st.set_page_config(
-    page_title="IDX Professional Trading System",
+    page_title="IDX Professional Trading System v2.0",
     layout="wide"
 )
 
-st.title("📊 IDX Professional Trading System")
-st.caption("Auto Market Scan + Manual Analysis (Production Grade)")
+st.title("📊 IDX Professional Trading System v2.0")
+st.caption("Top-Ranked Realistic + Trending + Grade A/B/C")
 
 # ===============================
 # LOAD IDX UNIVERSE
@@ -27,16 +27,16 @@ IDX = load_idx_universe()
 # ===============================
 mode = st.radio(
     "🧭 Mode Analisa",
-    ["🔥 Auto IDX Scan (Ranking)", "🎯 Analisa Saham Manual"]
+    ["🔥 Auto IDX Scan (Top Ranked)", "🎯 Analisa Saham Manual"]
 )
 
 # ===============================
-# MODE 1 — AUTO IDX SCAN
+# AUTO IDX SCAN
 # ===============================
-if mode == "🔥 Auto IDX Scan (Ranking)":
-    st.subheader("🔥 IDX Market Scan — Top Ranked")
+if mode == "🔥 Auto IDX Scan (Top Ranked)":
+    st.subheader("🔥 IDX Market Scan — Top Ranked Realistic")
 
-    scan_df = scan_universe(IDX, limit=20)
+    scan_df = scan_universe(IDX, limit=50)
     if scan_df.empty:
         st.warning("Tidak ada saham memenuhi kriteria")
         st.stop()
@@ -44,7 +44,7 @@ if mode == "🔥 Auto IDX Scan (Ranking)":
     ranked = rank_stocks(scan_df)
 
     st.dataframe(
-        ranked[["Symbol", "Close", "RSI", "Score"]],
+        ranked[["Symbol", "Close", "RSI", "TrendScore", "Momentum", "Score", "Grade"]],
         use_container_width=True
     )
 
@@ -54,7 +54,7 @@ if mode == "🔥 Auto IDX Scan (Ranking)":
     )
 
 # ===============================
-# MODE 2 — MANUAL INPUT
+# MANUAL INPUT
 # ===============================
 else:
     st.subheader("🎯 Analisa Saham Manual")
@@ -64,7 +64,7 @@ else:
     )
 
 # ===============================
-# COMMON ANALYSIS (BOTH MODES)
+# COMMON ANALYSIS
 # ===============================
 df = fetch_price(symbol)
 if df is None or df.empty:
@@ -93,13 +93,13 @@ c2.metric("RSI", round(rsi, 1))
 c3.metric("Trend", trend)
 
 # ===============================
-# DECISION ENGINE
+# DECISION ENGINE (lebih fleksibel)
 # ===============================
 decision = "WAIT"
 
-if trend == "BULLISH" and rsi < 65 and price <= support * 1.05:
+if trend == "BULLISH" and rsi < 70 and price <= support * 1.08:
     decision = "BUY"
-elif rsi > 75 or price >= resistance * 0.98:
+elif rsi > 70 or price >= resistance * 0.97:
     decision = "SELL"
 
 st.subheader(f"🧠 Decision: {decision}")
