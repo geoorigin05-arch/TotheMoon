@@ -1,3 +1,7 @@
+import yfinance as yf
+import pandas as pd
+import numpy as np
+
 def fetch_price(symbol, period="1y"):
     df = yf.download(symbol, period=period, auto_adjust=True, progress=False)
 
@@ -17,8 +21,35 @@ def fetch_price(symbol, period="1y"):
     df["Resistance"] = df["High"].rolling(20).max()
 
     df = df.dropna()
-
     if df.empty:
         return None
 
     return df
+
+def scan_universe(symbols, limit=20):
+    results = []
+
+    for s in symbols:
+        df = fetch_price(s)
+        if df is None or df.empty:
+            continue
+
+        last = df.iloc[-1]
+
+        close = float(last["Close"])
+        ma50 = float(last["MA50"])
+        ma200 = float(last["MA200"])
+        rsi = float(last["RSI"])
+
+        if close > ma50 and ma50 > ma200 and rsi < 70:
+            results.append({
+                "Symbol": s,
+                "Close": close,
+                "RSI": rsi,
+                "TrendScore": ma50 / ma200
+            })
+
+        if len(results) >= limit:
+            break
+
+    return pd.DataFrame(results)
