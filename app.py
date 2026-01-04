@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 from sklearn.linear_model import LogisticRegression
+from stockbit_service import get_stockbit_fundamental
 
 st.set_page_config(
     page_title="IDX Professional Trading System",
@@ -222,6 +223,23 @@ c7.metric("EPS", "-" if not f.get("EPS") else f"{f['EPS']:.2f}")
 c8.metric("PER", "-" if not f.get("PER") else f"{f['PER']:.1f}")
 c9.metric("PBV", "-" if not f.get("PBV") else f"{f['PBV']:.2f}")
 c10.metric("Market Cap", "-" if not f.get("MarketCap") else f"{f['MarketCap']/1e12:.1f}T")
+
+st.divider()
+st.subheader("🏛️ Fundamental (Stockbit – Live Research View)")
+
+try:
+    sb = get_stockbit_fundamental(symbol)
+
+    c11, c12, c13, c14 = st.columns(4)
+    c11.metric("ROE", "-" if not sb.get("ROE") else f"{sb['ROE']:.1f}%")
+    c12.metric("EPS", "-" if not sb.get("EPS") else f"{sb['EPS']:.1f}")
+    c13.metric("PER", "-" if not sb.get("PER") else f"{sb['PER']:.1f}")
+    c14.metric("PBV", "-" if not sb.get("PBV") else f"{sb['PBV']:.1f}")
+
+    st.caption("Data Stockbit hanya untuk konfirmasi fundamental (non-trading)")
+
+except Exception as e:
+    st.warning("Fundamental Stockbit belum tersedia / jalankan service lokal")
 
 # ===============================
 # AI CONFIDENCE
