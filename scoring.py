@@ -1,40 +1,33 @@
 import pandas as pd
 
 # ===============================
-# Scoring untuk satu saham
+# Score per saham
 # ===============================
 def score_stock(row):
     rsi = row.get("RSI", 50)
-    trend = row.get("TrendScore", 1)
-    momentum = row.get("Momentum", 0)
-
-    # Pastikan numeric
-    rsi = float(rsi) if pd.notna(rsi) else 50
-    trend = float(trend) if pd.notna(trend) else 1
-    momentum = float(momentum) if pd.notna(momentum) else 0
-
+    try:
+        rsi = float(rsi) if pd.notna(rsi) else 50
+    except:
+        rsi = 50
     score = 0
     if rsi < 65:
         score += 1
-    if trend > 1:
+    trendscore = row.get("TrendScore", 0)
+    if trendscore > 1:
         score += 1
+    momentum = row.get("Momentum", 0)
     if momentum > 0:
         score += 1
     return score
 
 # ===============================
-# Rank & Grade Top10
+# Rank + Grade
 # ===============================
-def rank_stocks(df):
+def rank_stocks(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
+    df = df.copy()
     df["Score"] = df.apply(score_stock, axis=1)
-    def grade(x):
-        if x==3:
-            return "A"
-        elif x==2:
-            return "B"
-        else:
-            return "C"
-    df["Grade"] = df["Score"].apply(grade)
-    return df.sort_values("Score", ascending=False)
+    # Grade A/B/C
+    df["Grade"] = df["Score"].apply(lambda x: "A" if x>=3 else "B" if x==2 else "C")
+    return df.sort_values(by="Score", ascending=False)
