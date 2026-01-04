@@ -32,10 +32,10 @@ def scan_universe(symbols, limit=15):
 
     for s in symbols:
         df = fetch_price(s)
-        if df is None:
-            continue
+        if df is None or df.empty:
+    continue
 
-        last = df.iloc[-1]
+last = df.iloc[-1]
 
         close = float(last["Close"])
         ma50 = float(last["MA50"])
