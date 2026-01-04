@@ -5,6 +5,10 @@ from sklearn.linear_model import LogisticRegression
 MODEL_FILE = "ai_model.pkl"
 
 def train_ai(df):
+    # Pastikan kolom MA50 selalu ada
+    if "MA50" not in df.columns:
+        df["MA50"] = df["MA200"]
+
     X, y = [], []
 
     for i in range(60, len(df)-5):
@@ -23,23 +27,20 @@ def train_ai(df):
     joblib.dump(model, MODEL_FILE)
     return model
 
-def load_ai_model(df):
-    if os.path.exists(MODEL_FILE):
-        return joblib.load(MODEL_FILE)
-
-    model = train_ai(df)
-    return model
-
 def ai_confidence(df):
     model = load_ai_model(df)
     if model is None:
         return 0.5
 
     last = df.iloc[-1]
+
+    ma50 = last["MA50"] if "MA50" in last else last["MA200"]
+
     prob = model.predict_proba([[
         last["RSI"],
-        last["Close"] / last["MA50"],
+        last["Close"] / ma50,
         last["Close"] / last["MA200"]
     ]])[0][1]
 
     return float(prob)
+
