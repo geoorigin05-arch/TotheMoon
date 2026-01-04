@@ -10,7 +10,7 @@ st.set_page_config(
 )
 
 st.title("📊 IDX Professional Trading System v2.4")
-st.caption("Top-50 IDX Scan + Manual Input Stabil + AI Confidence + Level Guidance")
+st.caption("Top-10 IDX Scan + Manual Input Stabil + AI Confidence + Level Guidance")
 
 # ===============================
 # LOAD IDX UNIVERSE
