@@ -2,17 +2,16 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime
 
 # ======================================================
 # PAGE
 # ======================================================
 st.set_page_config(page_title="IDX Professional Trading System", layout="wide")
 st.title("📊 IDX Professional Trading System")
-st.caption("Decision Support • Technical • Risk Managed")
+st.caption("Market Insight (Auto IDX) + Decision Support (Input Saham)")
 
 # ======================================================
-# 🔥 AUTO IDX UNIVERSE (INFO ONLY - DI ATAS)
+# 🔥 AUTO IDX UNIVERSE (INFO ONLY)
 # ======================================================
 @st.cache_data
 def load_idx_universe():
@@ -30,23 +29,29 @@ def load_idx_universe():
 
 @st.cache_data
 def scan_market(ticker):
-    df = yf.download(ticker, period="1y", progress=False)
-    if df.empty or len(df) < 200:
+    df = yf.download(ticker, period="1y", progress=False, auto_adjust=True)
+
+    if df.empty or len(df) < 220:
         return None
 
     df["MA50"] = df["Close"].rolling(50).mean()
     df["MA200"] = df["Close"].rolling(200).mean()
+    df.dropna(inplace=True)
+
+    if df.empty:
+        return None
 
     last = df.iloc[-1]
 
-    bullish = (
-        last["Close"] > last["MA50"] and
-        last["MA50"] > last["MA200"]
-    )
+    close = float(last["Close"])
+    ma50  = float(last["MA50"])
+    ma200 = float(last["MA200"])
+
+    bullish = close > ma50 > ma200
 
     return {
         "ticker": ticker,
-        "price": last["Close"],
+        "price": close,
         "bullish": bullish
     }
 
@@ -63,25 +68,25 @@ if candidates:
         st.success(
             f"**{r['ticker']}**\n"
             f"Harga: {int(r['price']):,}\n"
-            f"Alasan: Trend naik jangka menengah"
+            f"Alasan: Trend naik MA50 > MA200"
         )
 else:
-    st.info("Belum ada saham IDX yang memenuhi kriteria strong trend hari ini")
+    st.info("Belum ada saham IDX dengan trend kuat saat ini")
 
 st.divider()
 
 # ======================================================
-# 🎯 MAIN ANALYSIS (TETAP PAKE LOGIKA INPUT)
+# 🎯 MAIN ANALYSIS (SAHAM INPUT)
 # ======================================================
 st.sidebar.header("⚙️ Analisa Saham")
 symbol = st.sidebar.text_input("Kode Saham (.JK)", "BBCA.JK")
 modal = st.sidebar.number_input("Modal (Rp)", value=10_000_000, step=1_000_000)
 risk_pct = st.sidebar.slider("Risk (%)", 1, 10, 2)
 
-df = yf.download(symbol, period="1y", progress=False)
+df = yf.download(symbol, period="1y", progress=False, auto_adjust=True)
 
-if df.empty or len(df) < 200:
-    st.error("❌ Data tidak cukup untuk analisa")
+if df.empty or len(df) < 220:
+    st.error("❌ Data tidak cukup untuk analisa profesional")
     st.stop()
 
 # ======================================================
@@ -100,43 +105,39 @@ df["RSI"] = 100 - (100 / (1 + rs))
 df.dropna(inplace=True)
 
 last = df.iloc[-1]
-price = float(last["Close"])
 
-# ======================================================
-# SUPPORT RESISTANCE
-# ======================================================
+price = float(last["Close"])
+ma50 = float(last["MA50"])
+ma200 = float(last["MA200"])
+rsi = float(last["RSI"])
+
 support = float(df["Low"].rolling(20).min().iloc[-1])
 resistance = float(df["High"].rolling(20).max().iloc[-1])
 
 # ======================================================
-# DECISION LOGIC (PRO)
+# DECISION LOGIC
 # ======================================================
-reasons_buy = []
-reasons_sell = []
-reasons_wait = []
+buy, sell, wait = [], [], []
 
-if price > last["MA50"] > last["MA200"]:
-    reasons_buy.append("Trend naik (MA50 > MA200)")
+if price > ma50 > ma200:
+    buy.append("Trend naik (MA50 > MA200)")
 else:
-    reasons_wait.append("Trend belum jelas")
+    wait.append("Trend belum konfirmasi")
 
-if last["RSI"] < 70:
-    reasons_buy.append("RSI masih sehat")
-else:
-    reasons_sell.append("RSI overbought")
+if rsi < 70:
+    buy.append("RSI sehat")
+elif rsi > 70:
+    sell.append("RSI overbought")
 
-if price < support * 1.02:
-    reasons_buy.append("Harga dekat support")
+if price <= support * 1.02:
+    buy.append("Harga dekat support")
 
-if price > resistance * 0.98:
-    reasons_sell.append("Harga dekat resistance")
+if price >= resistance * 0.98:
+    sell.append("Harga dekat resistance")
 
-# ======================================================
-# FINAL DECISION
-# ======================================================
-if len(reasons_buy) >= 3:
+if len(buy) >= 3:
     decision = "BUY"
-elif len(reasons_sell) >= 2:
+elif len(sell) >= 2:
     decision = "SELL"
 else:
     decision = "WAIT"
@@ -146,25 +147,22 @@ else:
 # ======================================================
 st.subheader(f"📌 Decision: **{decision}**")
 
-col1, col2, col3 = st.columns(3)
-col1.metric("Harga", f"{int(price):,}")
-col2.metric("RSI", f"{last['RSI']:.1f}")
-col3.metric("Trend", "BULLISH" if price > last["MA200"] else "BEARISH")
+c1, c2, c3 = st.columns(3)
+c1.metric("Harga", f"{int(price):,}")
+c2.metric("RSI", f"{rsi:.1f}")
+c3.metric("Trend", "BULLISH" if price > ma200 else "BEARISH")
 
 st.divider()
-
 st.subheader("🧠 Alasan Keputusan")
 
 if decision == "BUY":
-    for r in reasons_buy:
+    for r in buy:
         st.success(r)
-
 elif decision == "SELL":
-    for r in reasons_sell:
+    for r in sell:
         st.error(r)
-
 else:
-    for r in reasons_wait:
+    for r in wait:
         st.info(r)
 
 # ======================================================
@@ -172,11 +170,11 @@ else:
 # ======================================================
 risk_amount = modal * (risk_pct / 100)
 risk_per_share = max(price - support, 1)
-max_lot = int(risk_amount / risk_per_share / 100)
+max_lot = int(risk_amount / (risk_per_share * 100))
 
 st.divider()
 st.subheader("📉 Risk Management")
 st.metric("Stop Loss", f"{int(support):,}")
 st.metric("Max Lot", f"{max_lot:,}")
 
-st.caption("System ini hanya memberikan decision support, bukan rekomendasi mutlak.")
+st.caption("Decision support system — bukan rekomendasi mutlak.")
