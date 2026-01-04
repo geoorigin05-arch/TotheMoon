@@ -10,7 +10,7 @@ st.set_page_config(
 )
 
 st.title("📊 IDX Professional Trading System v2.4")
-st.caption("Top-10 IDX Scan + Manual Input Stabil + AI Confidence + Level Guidance")
+st.caption("Top-50 IDX Scan + Manual Input Stabil + AI Confidence + Level Guidance")
 
 # ===============================
 # LOAD IDX UNIVERSE
@@ -27,7 +27,7 @@ IDX = load_idx_universe()
 # ===============================
 mode = st.radio(
     "🧭 Mode Analisa",
-    ["🔥 Auto IDX Scan (Top 10 Ranked)", "🎯 Analisa Saham Manual"]
+    ["🔥 Auto IDX Scan (Top 50 Ranked)", "🎯 Analisa Saham Manual"]
 )
 
 # ===============================
@@ -64,7 +64,7 @@ if mode == "🔥 Auto IDX Scan (Top 50 Ranked)":
     # Cache scan per hari → cepat dan ringan
     @st.cache_data(show_spinner=False)
     def get_scan_df():
-        df_scan = scan_universe(IDX, limit=10)
+        df_scan = scan_universe(IDX, limit=50)
         # Hanya ambil saham valid
         df_scan = df_scan[df_scan["Close"].notna()]
         return df_scan
