@@ -1,33 +1,40 @@
 import pandas as pd
 
 # ===============================
-# Score per saham
+# Scoring saham untuk Grade + Score
 # ===============================
 def score_stock(row):
-    rsi = row.get("RSI", 50)
     try:
-        rsi = float(rsi) if pd.notna(rsi) else 50
+        rsi = float(row.get("RSI",50))
+        trendscore = float(row.get("TrendScore",0))
+        momentum = float(row.get("Momentum",0))
     except:
-        rsi = 50
+        rsi, trendscore, momentum = 50, 0, 0
+
     score = 0
-    if rsi < 65:
-        score += 1
-    trendscore = row.get("TrendScore", 0)
+    if 50 < rsi < 70:
+        score += 2
     if trendscore > 1:
-        score += 1
-    momentum = row.get("Momentum", 0)
+        score += 3
     if momentum > 0:
         score += 1
     return score
 
+def grade_stock(score):
+    if score >=5:
+        return "A"
+    elif score >=3:
+        return "B"
+    else:
+        return "C"
+
 # ===============================
-# Rank + Grade
+# Rank stocks
 # ===============================
-def rank_stocks(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty:
-        return df
+def rank_stocks(df: pd.DataFrame):
     df = df.copy()
     df["Score"] = df.apply(score_stock, axis=1)
-    # Grade A/B/C
-    df["Grade"] = df["Score"].apply(lambda x: "A" if x>=3 else "B" if x==2 else "C")
-    return df.sort_values(by="Score", ascending=False)
+    df["Grade"] = df["Score"].apply(grade_stock)
+    # Decision default
+    df["Decision"] = df.apply(lambda x: "BUY" if x["Score"]>=5 else ("SELL" if x["Score"]<=2 else "WAIT"), axis=1)
+    return df
