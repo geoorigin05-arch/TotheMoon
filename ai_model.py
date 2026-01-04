@@ -1,11 +1,10 @@
-import joblib
 import os
+import joblib
 from sklearn.linear_model import LogisticRegression
 
 MODEL_FILE = "ai_model.pkl"
 
 def train_ai(df):
-    """Train AI model only if data cukup"""
     X, y = [], []
 
     for i in range(60, len(df)-5):
@@ -17,7 +16,7 @@ def train_ai(df):
         y.append(int(df["Close"].iloc[i+5] > df["Close"].iloc[i]))
 
     if len(X) == 0:
-        return None  # data tidak cukup untuk train
+        return None
 
     model = LogisticRegression()
     model.fit(X, y)
@@ -29,12 +28,12 @@ def load_ai_model(df):
         return joblib.load(MODEL_FILE)
 
     model = train_ai(df)
-    return model  # bisa None jika data pendek
+    return model
 
 def ai_confidence(df):
     model = load_ai_model(df)
     if model is None:
-        return 0.5  # default confidence jika data pendek
+        return 0.5
 
     last = df.iloc[-1]
     prob = model.predict_proba([[
