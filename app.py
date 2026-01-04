@@ -5,11 +5,11 @@ from scoring import rank_stocks
 from ai_model import ai_confidence
 
 st.set_page_config(
-    page_title="IDX Professional Trading System v2.3",
+    page_title="IDX Professional Trading System v2.4",
     layout="wide"
 )
 
-st.title("📊 IDX Professional Trading System v2.3")
+st.title("📊 IDX Professional Trading System v2.4")
 st.caption("Top-50 IDX Scan + Manual Input Stabil + AI Confidence + Level Guidance")
 
 # ===============================
@@ -31,60 +31,7 @@ mode = st.radio(
 )
 
 # ===============================
-# AUTO IDX SCAN
-# ===============================
-if mode == "🔥 Auto IDX Scan (Top 50 Ranked)":
-    st.subheader("🔥 IDX Market Scan — Top Ranked + Trending + Grade A/B/C")
-
-    # Cache scan per hari supaya cepat
-    @st.cache_data(show_spinner=False)
-    def get_scan_df():
-        df_scan = scan_universe(IDX, limit=50)
-        return df_scan
-
-    scan_df = get_scan_df()
-    if scan_df.empty:
-        st.warning("Tidak ada saham memenuhi kriteria")
-        st.stop()
-
-    ranked = rank_stocks(scan_df)
-
-    st.dataframe(
-        ranked[["Symbol", "Close", "RSI", "TrendScore", "Momentum", "Score", "Grade"]],
-        use_container_width=True
-    )
-
-    # Pilih untuk analisa manual detail
-    symbol = st.selectbox(
-        "🎯 Analisa Detail Saham",
-        ranked["Symbol"]
-    )
-
-# ===============================
-# MANUAL INPUT
-# ===============================
-else:
-    st.subheader("🎯 Analisa Saham Manual")
-    symbol_input = st.text_input(
-        "Masukkan Kode Saham (contoh: BBCA.JK)",
-        value="BBCA.JK",
-        key="manual_symbol_input"
-    ).upper().strip()
-
-    if symbol_input == "":
-        st.stop()
-    symbol = symbol_input
-
-    modal_rp = st.number_input(
-        "💰 Modal Investasi (Rp)",
-        min_value=10_000,
-        value=100_000_000,
-        step=10_000,
-        key="modal_input"
-    )
-
-# ===============================
-# FETCH DATA (CACHED PER SYMBOL UNTUK STABIL)
+# FETCH PRICE CACHED (per symbol) - Stabil
 # ===============================
 @st.cache_data(show_spinner=False)
 def fetch_price_cached(symbol):
@@ -108,9 +55,74 @@ def fetch_price_cached(symbol):
     df["Resistance"] = df["High"].rolling(20).max()
     return df.dropna()
 
+# ===============================
+# AUTO IDX SCAN
+# ===============================
+if mode == "🔥 Auto IDX Scan (Top 50 Ranked)":
+    st.subheader("🔥 IDX Market Scan — Top Ranked + Trending + Grade A/B/C")
+
+    # Cache scan per hari → cepat dan ringan
+    @st.cache_data(show_spinner=False)
+    def get_scan_df():
+        df_scan = scan_universe(IDX, limit=50)
+        # Hanya ambil saham valid
+        df_scan = df_scan[df_scan["Close"].notna()]
+        return df_scan
+
+    scan_df = get_scan_df()
+    if scan_df.empty:
+        st.warning("Tidak ada saham memenuhi kriteria")
+        st.stop()
+
+    ranked = rank_stocks(scan_df)
+
+    st.dataframe(
+        ranked[["Symbol", "Close", "RSI", "TrendScore", "Momentum", "Score", "Grade"]],
+        use_container_width=True
+    )
+
+    # Pilih untuk analisa manual detail
+    symbol = st.selectbox(
+        "🎯 Analisa Detail Saham",
+        ranked["Symbol"]
+    )
+    modal_rp = st.number_input(
+        "💰 Modal Investasi (Rp)",
+        min_value=10_000,
+        value=100_000_000,
+        step=10_000,
+        key="modal_input_scan"
+    )
+
+# ===============================
+# MANUAL INPUT
+# ===============================
+else:
+    st.subheader("🎯 Analisa Saham Manual")
+    symbol_input = st.text_input(
+        "Masukkan Kode Saham (contoh: BBCA.JK)",
+        value="BBCA.JK",
+        key="manual_symbol_input"
+    ).upper().strip()
+
+    if symbol_input == "":
+        st.stop()
+    symbol = symbol_input
+
+    modal_rp = st.number_input(
+        "💰 Modal Investasi (Rp)",
+        min_value=10_000,
+        value=100_000_000,
+        step=10_000,
+        key="modal_input_manual"
+    )
+
+# ===============================
+# FETCH DATA
+# ===============================
 df = fetch_price_cached(symbol)
 if df is None or df.empty:
-    st.error(f"❌ Data tidak cukup / saham {symbol} tidak valid")
+    st.warning(f"❌ Data untuk {symbol} tidak tersedia / terlalu sedikit")
     st.stop()
 
 last = df.iloc[-1]
@@ -153,11 +165,8 @@ elif rsi > 70 or price >= resistance * 0.97:
 else:
     buy_area = (support, support * 1.08)  # WAIT → target entry
 
-# Max lot realistis
-if mode == "🎯 Analisa Saham Manual":
-    max_lot = int(modal_rp / price / lot_size)
-else:
-    max_lot = int(100_000_000 / price / lot_size)
+# Max lot realistis per modal
+max_lot = int(modal_rp / price / lot_size)
 
 st.subheader(f"🧠 Decision: {decision}")
 
