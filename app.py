@@ -58,13 +58,28 @@ if mode == "🔥 Auto IDX Scan (Top Ranked)":
 # ===============================
 else:
     st.subheader("🎯 Analisa Saham Manual")
-    symbol = st.text_input(
+    symbol_input = st.text_input(
         "Masukkan Kode Saham (contoh: BBCA.JK)",
-        "BBCA.JK"
+        value="BBCA.JK",
+        key="manual_symbol_input"
+    ).upper().strip()
+
+    # Untuk memastikan state konsisten
+    if symbol_input == "":
+        st.stop()
+    symbol = symbol_input
+
+    # Modal manual input
+    modal_rp = st.number_input(
+        "💰 Modal Investasi (Rp)",
+        min_value=10_000,
+        value=100_000_000,
+        step=10_000,
+        key="modal_input"
     )
 
 # ===============================
-# COMMON ANALYSIS
+# FETCH DATA
 # ===============================
 df = fetch_price(symbol)
 if df is None or df.empty:
@@ -93,37 +108,51 @@ c2.metric("RSI", round(rsi, 1))
 c3.metric("Trend", trend)
 
 # ===============================
-# DECISION ENGINE + LEVELS
+# DECISION ENGINE + LEVELS + RISK
 # ===============================
 decision = "WAIT"
 buy_area = (0, 0)
 sell_area = (0, 0)
 tp_price = None
 stop_loss = support * 0.97
+lot_size = 100  # 1 lot = 100 saham
 
+# Rules
 if trend == "BULLISH" and rsi < 70 and price <= support * 1.08:
     decision = "BUY"
-    # Buy area
     buy_area = (support, support * 1.08)
-    # Take profit target
     tp_price = resistance * 0.97
 elif rsi > 70 or price >= resistance * 0.97:
     decision = "SELL"
-    # Sell zone
     sell_area = (resistance * 0.97, resistance)
 else:
-    # WAIT → tunjukkan Buy Area untuk entry nanti
     buy_area = (support, support * 1.08)
 
+# Max lot berdasarkan modal manual
+if mode == "🎯 Analisa Saham Manual":
+    max_lot = int(modal_rp / price / lot_size)
+else:
+    max_lot = int(100_000_000 / price / lot_size)
+
+# Display decision
 st.subheader(f"🧠 Decision: {decision}")
 
 # ===============================
-# DISPLAY LEVELS
+# AI CONFIDENCE
 # ===============================
-st.markdown("**Level / Zone Guidance:**")
+st.divider()
+st.subheader("🤖 AI Confidence")
+conf = ai_confidence(df)
+st.progress(conf)
+st.caption("AI confidence only — decision tetap rule-based")
+
+# ===============================
+# DISPLAY LEVELS / RISK
+# ===============================
+st.divider()
+st.subheader("📉 Level / Zone Guidance & Risk Management")
 
 cols = st.columns(3)
-
 if decision == "BUY":
     cols[0].metric("Buy Area", f"{buy_area[0]:.0f} - {buy_area[1]:.0f}")
     cols[1].metric("Take Profit (TP)", f"{tp_price:.0f}")
@@ -138,27 +167,6 @@ else:  # WAIT
     cols[0].metric("Buy Area (Target Entry)", f"{buy_area[0]:.0f} - {buy_area[1]:.0f}")
     cols[1].metric("Stop Loss", f"{stop_loss:.0f}")
     cols[2].metric("—", "-")
-# ===============================
-# AI CONFIDENCE
-# ===============================
-st.divider()
-st.subheader("🤖 AI Confidence")
 
-conf = ai_confidence(df)
-st.progress(conf)
-st.caption("AI confidence only — decision tetap rule-based")
-
-# ===============================
-# RISK MANAGEMENT
-# ===============================
-st.divider()
-st.subheader("📉 Risk Management")
-
-stop_loss = support * 0.97
-max_lot = int(100_000_000 / price)
-
-c4, c5 = st.columns(2)
-c4.metric("Stop Loss", int(stop_loss))
-c5.metric("Max Lot", max_lot)
-
-st.caption("Decision support system — bukan rekomendasi mutlak.")
+# Max lot
+st.metric("💹 Max Lot (Realistic)", max_lot)
