@@ -56,29 +56,29 @@ if mode == "🔥 Auto IDX Scan (Top Ranked)":
 # ===============================
 # MANUAL INPUT
 # ===============================
-else:
-    st.subheader("🎯 Analisa Saham Manual")
-    symbol = st.text_input(
-        "Masukkan Kode Saham (contoh: BBCA.JK)",
-        "BBCA.JK"
-    )
+symbol = st.text_input("🎯 Masukkan Kode Saham (contoh: BBCA.JK)", "BBCA.JK").upper().strip()
+modal_rp = st.number_input("💰 Modal Investasi (Rp)", value=100_000_000, step=10_000)
 
-# ===============================
-# COMMON ANALYSIS
-# ===============================
-df = fetch_price(symbol)
+refresh = st.button("🔄 Refresh Harga Manual")
+
+# Fetch data manual → tanpa cache
+if refresh or "last_symbol" not in st.session_state or st.session_state.last_symbol != symbol:
+    df = fetch_price(symbol)
+    st.session_state.last_symbol = symbol
+    st.session_state.last_df = df
+else:
+    df = st.session_state.get("last_df", None)
+
 if df is None or df.empty:
-    st.error(f"❌ Data tidak cukup / saham {symbol} tidak valid")
+    st.warning(f"❌ Data untuk {symbol} tidak tersedia / terlalu sedikit.")
     st.stop()
 
 last = df.iloc[-1]
-
 price = float(last["Close"])
-ma200 = float(last["MA200"])
-rsi = float(last["RSI"])
 support = float(last["Support"])
 resistance = float(last["Resistance"])
-
+rsi = float(last["RSI"])
+ma200 = float(last["MA200"])
 trend = "BULLISH" if price > ma200 else "BEARISH"
 
 # ===============================
@@ -92,49 +92,6 @@ c1.metric("Harga", int(price))
 c2.metric("RSI", round(rsi, 1))
 c3.metric("Trend", trend)
 
-# ===============================
-# DECISION ENGINE + LEVELS + RISK
-# ===============================
-# Default
-decision = "WAIT"
-buy_area = (0, 0)
-sell_area = (0, 0)
-tp_price = None
-stop_loss = support * 0.97
-
-# Rules
-if trend == "BULLISH" and rsi < 70 and price <= support * 1.08:
-    decision = "BUY"
-    buy_area = (support, support * 1.08)
-    tp_price = resistance * 0.97
-elif rsi > 70 or price >= resistance * 0.97:
-    decision = "SELL"
-    sell_area = (resistance * 0.97, resistance)
-else:
-    # WAIT → tunjukkan Buy Area
-    buy_area = (support, support * 1.08)
-
-# Display Decision
-st.subheader(f"🧠 Decision: {decision}")
-
-# Display Levels / Zones
-st.markdown("**Level / Zone Guidance:**")
-cols = st.columns(3)
-
-if decision == "BUY":
-    cols[0].metric("Buy Area", f"{buy_area[0]:.0f} - {buy_area[1]:.0f}")
-    cols[1].metric("Take Profit (TP)", f"{tp_price:.0f}")
-    cols[2].metric("Stop Loss", f"{stop_loss:.0f}")
-
-elif decision == "SELL":
-    cols[0].metric("Sell Area", f"{sell_area[0]:.0f} - {sell_area[1]:.0f}")
-    cols[1].metric("Stop Loss", f"{stop_loss:.0f}")
-    cols[2].metric("—", "-")
-
-else:  # WAIT
-    cols[0].metric("Buy Area (Target Entry)", f"{buy_area[0]:.0f} - {buy_area[1]:.0f}")
-    cols[1].metric("Stop Loss", f"{stop_loss:.0f}")
-    cols[2].metric("—", "-")
 # ===============================
 # DECISION ENGINE + LEVELS + RISK
 # ===============================
