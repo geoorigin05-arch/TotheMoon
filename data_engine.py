@@ -26,6 +26,7 @@ def fetch_price(symbol: str) -> pd.DataFrame:
         df.reset_index(inplace=True)
         df.rename(columns={"Close": "Close"}, inplace=True)
         df["MA200"] = df["Close"].rolling(200).mean()
+        df["MA50"] = df["Close"].rolling(50).mean()      # <--- tambahkan ini
         df["RSI"] = compute_rsi(df["Close"])
         df["Support"] = df["Close"].rolling(20).min()
         df["Resistance"] = df["Close"].rolling(20).max()
@@ -43,6 +44,7 @@ def fetch_price_latest(symbol: str) -> pd.DataFrame:
             return None
         df.reset_index(inplace=True)
         df["MA200"] = df["Close"].rolling(200).mean()
+        df["MA50"] = df["Close"].rolling(50).mean()      # <--- tambahkan ini
         df["RSI"] = compute_rsi(df["Close"])
         df["Support"] = df["Close"].rolling(20).min()
         df["Resistance"] = df["Close"].rolling(20).max()
