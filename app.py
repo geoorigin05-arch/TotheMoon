@@ -81,7 +81,9 @@ rsi = float(last["RSI"])
 support = float(last["Support"])
 resistance = float(last["Resistance"])
 
-trend = "BULLISH" if price > last["MA200"] else "BEARISH"
+ma200 = float(last["MA200"])
+trend = "BULLISH" if price > ma200 else "BEARISH"
+
 
 # ===============================
 # METRICS
