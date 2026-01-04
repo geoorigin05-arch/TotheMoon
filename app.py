@@ -1,5 +1,5 @@
 # ======================================================
-# PROFESSIONAL STOCK MONITORING SYSTEM (HARDENED)
+# PROFESSIONAL STOCK MONITORING SYSTEM (FINAL & STABLE)
 # ======================================================
 
 import streamlit as st
@@ -16,6 +16,13 @@ from telegram import Bot
 from dotenv import load_dotenv
 
 # ======================================================
+# PAGE CONFIG
+# ======================================================
+st.set_page_config(page_title="Professional Stock System", layout="centered")
+st.title("📊 Professional Stock Monitoring System")
+st.caption("Decision Support System • Risk First • Adaptive")
+
+# ======================================================
 # ENV & TELEGRAM
 # ======================================================
 load_dotenv()
@@ -28,15 +35,7 @@ bot = Bot(token=BOT_TOKEN) if BOT_TOKEN else None
 # ======================================================
 tz = pytz.timezone("Asia/Jakarta")
 now = datetime.now(tz)
-is_weekday = now.weekday() < 5
-is_market_hour = is_weekday and (9 <= now.hour < 15)
-
-# ======================================================
-# PAGE CONFIG
-# ======================================================
-st.set_page_config("Professional Stock System", layout="centered")
-st.title("📊 Professional Stock Monitoring System")
-st.caption("Decision Support • Risk First • Anti Overtrade")
+is_market_hour = now.weekday() < 5 and (9 <= now.hour < 15)
 
 # ======================================================
 # SIDEBAR
@@ -49,45 +48,33 @@ modal = st.sidebar.number_input("Modal (Rp)", value=10_000_000, step=500_000)
 risk_pct = st.sidebar.slider("Risk per Trade (%)", 1, 10, 2)
 
 # ======================================================
-# LOAD DATA (ROBUST & IDX SAFE)
+# LOAD DATA (ROBUST)
 # ======================================================
 try:
-    df = yf.download(
-        symbol,
-        period=period,
-        interval="1d",
-        progress=False
-    )
+    df = yf.download(symbol, period=period, interval="1d", progress=False)
 except Exception:
     st.error("❌ Gagal mengambil data dari Yahoo Finance")
     st.stop()
 
-# ======================================================
-# NORMALIZE DATAFRAME (CRITICAL FIX)
-# ======================================================
 if df is None or df.empty:
-    st.error("❌ Data kosong. Ticker tidak valid / market libur.")
+    st.error("❌ Data kosong / ticker tidak valid")
     st.stop()
 
-# Jika kolom MultiIndex (sering terjadi di IDX)
+# Handle MultiIndex columns (IDX case)
 if isinstance(df.columns, pd.MultiIndex):
     df.columns = df.columns.get_level_values(0)
 
-# Standarisasi nama kolom
-df.columns = [c.strip().title() for c in df.columns]
+df.columns = [c.title() for c in df.columns]
 
 required_cols = {"Open", "High", "Low", "Close", "Volume"}
-missing = required_cols - set(df.columns)
-
-if missing:
-    st.error(f"❌ Kolom tidak lengkap dari Yahoo Finance: {missing}")
+if not required_cols.issubset(df.columns):
+    st.error("❌ Struktur data tidak lengkap dari Yahoo Finance")
     st.stop()
 
-df = df[["Open", "High", "Low", "Close", "Volume"]]
-df = df.dropna()
+df = df[list(required_cols)].dropna()
 
-if len(df) < 60:
-    st.error("❌ Data terlalu sedikit untuk analisis profesional")
+if len(df) < 50:
+    st.error("❌ Data terlalu sedikit untuk analisis")
     st.stop()
 
 # ======================================================
@@ -99,15 +86,15 @@ slow = 20 if mode == "Scalping" else 50
 df["MA_fast"] = df["Close"].rolling(fast).mean()
 df["MA_slow"] = df["Close"].rolling(slow).mean()
 
-# Adaptive Trend MA
+# Adaptive Trend MA (NO MA_200)
 if len(df) >= 200:
-    trend_ma = 200
+    trend_len = 200
 elif len(df) >= 100:
-    trend_ma = 100
+    trend_len = 100
 else:
-    trend_ma = 50
+    trend_len = 50
 
-df["MA_trend"] = df["Close"].rolling(trend_ma).mean()
+df["MA_trend"] = df["Close"].rolling(trend_len).mean()
 
 # RSI
 delta = df["Close"].diff()
@@ -122,11 +109,14 @@ ema26 = df["Close"].ewm(span=26).mean()
 df["MACD"] = ema12 - ema26
 df["Signal"] = df["MACD"].ewm(span=9).mean()
 
-# Drop NaN secara selektif (AMAN)
-df = df.dropna(subset=["RSI", "MACD", "Signal", "MA_fast", "MA_slow", "MA_trend"])
+df = df.dropna(subset=["MA_fast", "MA_slow", "MA_trend", "RSI", "MACD", "Signal"])
+
+if df.empty:
+    st.error("❌ Data habis setelah perhitungan indikator")
+    st.stop()
 
 # ======================================================
-# SAFE LAST VALUES
+# LAST VALUES
 # ======================================================
 last = df.iloc[-1]
 price = float(last["Close"])
@@ -139,18 +129,17 @@ avg_volume = df["Volume"].rolling(20).mean().iloc[-1]
 atr = (df["High"] - df["Low"]).rolling(14).mean().iloc[-1]
 
 if avg_volume < 5_000_000:
-    st.error("❌ Saham tidak likuid (volume rendah)")
+    st.error("❌ Likuiditas rendah (tidak layak trading)")
     st.stop()
 
 if atr / price < 0.01:
-    st.error("❌ Volatilitas terlalu kecil (tidak layak trading)")
+    st.error("❌ Volatilitas terlalu kecil")
     st.stop()
 
 # ======================================================
-# TREND HIERARCHY
+# TREND BIAS (FINAL, CORRECT)
 # ======================================================
-trend_bias = "BULLISH" if price > df["MA_trend"].iloc[-1] else "BEARISH"
-
+trend_bias = "BULLISH" if price > last["MA_trend"] else "BEARISH"
 
 # ======================================================
 # SUPPORT & RESISTANCE
@@ -162,11 +151,11 @@ resistance = df["High"].rolling(20).max().iloc[-1]
 # ENTRY ZONE
 # ======================================================
 buy_zone_low = support * 1.02
-buy_zone_high = df["MA_fast"].iloc[-1]
-sell_zone_low = resistance * 0.98
+buy_zone_high = last["MA_fast"]
+sell_zone = resistance * 0.98
 
 # ======================================================
-# AI MODEL (SAFE)
+# AI MODEL (OPTIONAL, SAFE)
 # ======================================================
 ai_prob = 0.5
 if len(df) >= 120:
@@ -188,12 +177,12 @@ if len(df) >= 120:
     )
 
 # ======================================================
-# SCORING
+# SCORING (CONFLUENCE)
 # ======================================================
 score = 0
 if trend_bias == "BULLISH": score += 1
-if price > df["MA_fast"].iloc[-1]: score += 1
-if df["MACD"].iloc[-1] > df["Signal"].iloc[-1]: score += 1
+if price > last["MA_fast"]: score += 1
+if last["MACD"] > last["Signal"]: score += 1
 if 30 < rsi < 65: score += 1
 if buy_zone_low <= price <= buy_zone_high: score += 1
 if ai_prob > 0.6: score += 1
@@ -209,7 +198,7 @@ stop_loss = min(support, df["Low"].iloc[-3:].min())
 risk_amount = modal * (risk_pct / 100)
 risk_per_share = price - stop_loss
 max_lot = int(risk_amount / risk_per_share) if risk_per_share > 0 else 0
-rr_ratio = (sell_zone_low - price) / risk_per_share if risk_per_share > 0 else 0
+rr_ratio = (sell_zone - price) / risk_per_share if risk_per_share > 0 else 0
 
 # ======================================================
 # UI OUTPUT
@@ -217,7 +206,7 @@ rr_ratio = (sell_zone_low - price) / risk_per_share if risk_per_share > 0 else 0
 st.divider()
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Harga", f"{price:,.0f}")
-c2.metric("Trend", trend_bias)
+c2.metric("Trend Bias", trend_bias)
 c3.metric("AI Prob", f"{ai_prob:.2f}")
 c4.metric("Score", score)
 
@@ -228,4 +217,15 @@ Confidence: **{confidence}**
 Risk/Reward: **{rr_ratio:.2f}R**
 """)
 
-st.caption("⚠️ Sistem ini tahan error & memprioritaskan NO TRADE daripada entry buruk.")
+st.divider()
+z1, z2 = st.columns(2)
+z1.success(f"🟢 BUY ZONE\n{int(buy_zone_low):,} – {int(buy_zone_high):,}")
+z2.error(f"🔴 SELL ZONE\n{int(sell_zone):,}")
+
+st.divider()
+r1, r2, r3 = st.columns(3)
+r1.metric("Risk Amount", f"Rp {risk_amount:,.0f}")
+r2.metric("Stop Loss", f"{stop_loss:,.0f}")
+r3.metric("Max Lot", f"{max_lot:,}")
+
+st.caption("⚠️ Ini adalah decision support system. NO TRADE adalah keputusan valid.")
