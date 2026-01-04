@@ -19,7 +19,13 @@ def fetch_price(symbol, period="1y"):
     df["Support"] = df["Low"].rolling(20).min()
     df["Resistance"] = df["High"].rolling(20).max()
 
-    return df.dropna()
+    df = df.dropna()
+
+if df.empty or len(df) < 1:
+    return None
+
+return df
+
 
 def scan_universe(symbols, limit=15):
     results = []
