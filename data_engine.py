@@ -56,26 +56,17 @@ def fetch_price_latest(symbol: str) -> pd.DataFrame:
 def scan_universe(universe, limit=10):
     results = []
     for sym in universe:
-        df = fetch_price(sym)
+        df = fetch_price_latest(sym)  # 60 hari → cepat
         if df is None or df.empty:
             continue
         last = df.iloc[-1]
-
-        # Ambil MA200 dengan aman
-        ma200 = last.get("MA200", None)
-        if isinstance(ma200, pd.Series):  # Jika ternyata Series, ambil nilai terakhir
-            ma200 = ma200.iloc[-1] if not ma200.empty else None
-
-        # Cek validitas MA200
-        if ma200 is None or pd.isna(ma200) or ma200 == 0:
-            trend_score = 0
-        else:
-            trend_score = last["Close"] / ma200
-
-        # Ambil indikator lain dengan default aman
-        close = last.get("Close", 0)
-        rsi = last.get("RSI", 50)
-        momentum = close - df["Close"].iloc[-2] if len(df) > 1 else 0
+        close = float(last["Close"])
+        ma200 = float(last.get("MA200", close))
+        rsi = float(last.get("RSI", 50))
+        support = float(last.get("Support", close*0.95))
+        resistance = float(last.get("Resistance", close*1.05))
+        trend_score = close / ma200 if ma200 != 0 else 1
+        momentum = close - df["Close"].iloc[-2] if len(df)>=2 else 0
 
         results.append({
             "Symbol": sym,
@@ -83,10 +74,11 @@ def scan_universe(universe, limit=10):
             "RSI": rsi,
             "TrendScore": trend_score,
             "Momentum": momentum,
-            "Score": 0,   # nanti scoring bisa update
-            "Grade": "C"  # default grade
+            "Support": support,
+            "Resistance": resistance
         })
 
-    df_results = pd.DataFrame(results)
-    return df_results.head(limit)
+    df_result = pd.DataFrame(results)
+    df_result = df_result.sort_values("TrendScore", ascending=False).head(limit)
+    return df_result
 
