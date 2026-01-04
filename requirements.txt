@@ -8,3 +8,6 @@ python-dotenv
 streamlit-autorefresh
 pytz
 scikit-learn
+streamlit
+selenium
+webdriver-manager
