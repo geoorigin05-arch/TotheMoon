@@ -5,12 +5,12 @@ from ai_model import ai_confidence
 import pandas as pd
 
 st.set_page_config(
-    page_title="IDX Professional Trading System v2.8 Ultimate",
+    page_title="IDX Professional Trading System v2.9 Ultimate",
     layout="wide"
 )
 
-st.title("📊 IDX Professional Trading System v2.8 Ultimate")
-st.caption("Top-Ranked Realistic + Trending + Grade A/B/C + Manual Default Display + Buy/Sell/Wait")
+st.title("📊 IDX Professional Trading System v2.9 Ultimate")
+st.caption("Top10 Realistic + Trending + Grade A/B/C + Manual Default + Buy/Sell/Wait")
 
 # ===============================
 # LOAD IDX UNIVERSE
@@ -23,7 +23,7 @@ def load_idx_universe():
 IDX = load_idx_universe()
 
 # ===============================
-# MODE SELECTION (Manual default)
+# MODE SELECTION
 # ===============================
 mode = st.radio(
     "🧭 Mode Analisa",
@@ -32,47 +32,39 @@ mode = st.radio(
 )
 
 # ===============================
-# MANUAL INPUT MODE
+# MANUAL INPUT (DEFAULT)
 # ===============================
 if mode == "🎯 Analisa Saham Manual":
     st.subheader("🎯 Analisa Saham Manual (Default Display)")
-    
     symbol_input = st.text_input("Masukkan Kode Saham (contoh: BBCA.JK)").upper().strip()
     modal_rp = st.number_input("💰 Modal Investasi (Rp)", value=100_000_000, step=10_000)
     refresh = st.button("🔄 Refresh Harga")
 
-    if not symbol_input:
+    if symbol_input:
+        symbol = symbol_input
+        if refresh or "last_symbol" not in st.session_state or st.session_state.last_symbol != symbol:
+            df = fetch_price_latest(symbol)
+            st.session_state.last_symbol = symbol
+            st.session_state.last_df = df
+        else:
+            df = st.session_state.get("last_df", None)
+
+        if df is None or df.empty:
+            st.warning(f"❌ Data untuk {symbol} tidak tersedia / terlalu sedikit.")
+            st.stop()
+    else:
         st.info("Masukkan kode saham untuk mulai analisa.")
         st.stop()
 
-    symbol = symbol_input
-
-    # Fetch harga terbaru jika refresh atau simbol baru
-    if refresh or "last_symbol" not in st.session_state or st.session_state.last_symbol != symbol:
-        df = fetch_price_latest(symbol)
-        st.session_state.last_symbol = symbol
-        st.session_state.last_df = df
-    else:
-        df = st.session_state.get("last_df", None)
-
-    if df is None or df.empty:
-        st.warning(f"❌ Data untuk {symbol} tidak tersedia / terlalu sedikit.")
-        st.stop()
-
 # ===============================
-# AUTO TOP 10 SCAN MODE
+# AUTO IDX SCAN (Top 10)
 # ===============================
 else:
     st.subheader("🔥 IDX Market Scan — Top 10 Realistic")
 
     @st.cache_data
     def get_top10_scan():
-        scan_df = scan_universe(IDX, limit=10)
-        if scan_df is None or scan_df.empty:
-            return pd.DataFrame()
-        # pastikan MA200 valid
-        scan_df = scan_df.dropna(subset=["TrendScore"])
-        return scan_df
+        return scan_universe(IDX, limit=10)
 
     scan_df = get_top10_scan()
     if scan_df.empty:
@@ -84,13 +76,8 @@ else:
         ranked[["Symbol","Close","RSI","TrendScore","Momentum","Score","Grade"]],
         use_container_width=True
     )
-
     symbol = st.selectbox("🎯 Analisa Detail Saham", ranked["Symbol"])
     df = fetch_price_latest(symbol)
-    if df is None or df.empty:
-        st.warning(f"❌ Data untuk {symbol} tidak tersedia / terlalu sedikit.")
-        st.stop()
-    modal_rp = 1_000_000  # default modal untuk auto
 
 # ===============================
 # SAFETY CHECK
@@ -100,40 +87,39 @@ if symbol is None or df is None or df.empty:
     st.stop()
 
 # ===============================
-# EXTRACT LATEST DATA
+# EXTRACT DATA
 # ===============================
 last = df.iloc[-1]
 price = float(last["Close"])
 support = float(last.get("Support", price*0.95))
 resistance = float(last.get("Resistance", price*1.05))
-rsi = float(last.get("RSI", 50))
-ma200 = float(last.get("MA200", price))
-trend = "BULLISH" if price > ma200 else "BEARISH"
+rsi = float(last.get("RSI",50))
+ma200 = float(last.get("MA200",price))
+trend = "BULLISH" if price>ma200 else "BEARISH"
 
 # ===============================
 # METRICS
 # ===============================
 st.divider()
 st.subheader(f"📌 {symbol} — {trend}")
-c1, c2, c3 = st.columns(3)
+c1,c2,c3 = st.columns(3)
 c1.metric("Harga", int(price))
 c2.metric("RSI", round(rsi,1))
 c3.metric("Trend", trend)
 
 # ===============================
-# DECISION ENGINE + LEVELS + RISK
+# DECISION ENGINE
 # ===============================
-decision = "WAIT"
-buy_area = (0,0)
-sell_area = (0,0)
-tp_price = None
-stop_loss = support * 0.97
-max_lot = int(modal_rp / price)
+decision="WAIT"
+buy_area=(0,0)
+sell_area=(0,0)
+tp_price=None
+stop_loss=support*0.97
+max_lot=int(modal_rp/price)
 
-# Logic Buy / Sell / Wait
 if trend=="BULLISH" and rsi<70 and price<=support*1.08:
     decision="BUY"
-    buy_area=(support, support*1.08)
+    buy_area=(support,support*1.08)
     tp_price=resistance*0.97
 elif rsi>70 or price>=resistance*0.97:
     decision="SELL"
@@ -147,15 +133,15 @@ else:
 st.subheader(f"🧠 Decision: {decision}")
 cols = st.columns(3)
 if decision=="BUY":
-    cols[0].metric("Buy Area", f"{buy_area[0]:.0f} - {buy_area[1]:.0f}")
-    cols[1].metric("Take Profit (TP)", f"{tp_price:.0f}")
+    cols[0].metric("Buy Area", f"{buy_area[0]:.0f}-{buy_area[1]:.0f}")
+    cols[1].metric("TP", f"{tp_price:.0f}")
     cols[2].metric("Stop Loss", f"{stop_loss:.0f}")
 elif decision=="SELL":
-    cols[0].metric("Sell Area", f"{sell_area[0]:.0f} - {sell_area[1]:.0f}")
+    cols[0].metric("Sell Area", f"{sell_area[0]:.0f}-{sell_area[1]:.0f}")
     cols[1].metric("Stop Loss", f"{stop_loss:.0f}")
     cols[2].metric("—","-")
 else:
-    cols[0].metric("Buy Area (Target Entry)", f"{buy_area[0]:.0f} - {buy_area[1]:.0f}")
+    cols[0].metric("Buy Area (Target Entry)", f"{buy_area[0]:.0f}-{buy_area[1]:.0f}")
     cols[1].metric("Stop Loss", f"{stop_loss:.0f}")
     cols[2].metric("—","-")
 
