@@ -1,8 +1,8 @@
 import streamlit as st
-import pandas as pd
 from data_engine import scan_universe, fetch_price
 from scoring import rank_stocks
 from ai_model import ai_confidence
+import pandas as pd
 
 st.set_page_config(
     page_title="IDX Professional Trading System v2.0",
@@ -68,7 +68,7 @@ else:
 # ===============================
 df = fetch_price(symbol)
 if df is None or df.empty:
-    st.error("❌ Data tidak cukup / saham tidak valid")
+    st.error(f"❌ Data tidak cukup / saham {symbol} tidak valid")
     st.stop()
 
 last = df.iloc[-1]
@@ -93,17 +93,51 @@ c2.metric("RSI", round(rsi, 1))
 c3.metric("Trend", trend)
 
 # ===============================
-# DECISION ENGINE (lebih fleksibel)
+# DECISION ENGINE + LEVELS
 # ===============================
 decision = "WAIT"
+buy_area = (0, 0)
+sell_area = (0, 0)
+tp_price = None
+stop_loss = support * 0.97
 
 if trend == "BULLISH" and rsi < 70 and price <= support * 1.08:
     decision = "BUY"
+    # Buy area
+    buy_area = (support, support * 1.08)
+    # Take profit target
+    tp_price = resistance * 0.97
 elif rsi > 70 or price >= resistance * 0.97:
     decision = "SELL"
+    # Sell zone
+    sell_area = (resistance * 0.97, resistance)
+else:
+    # WAIT → tunjukkan Buy Area untuk entry nanti
+    buy_area = (support, support * 1.08)
 
 st.subheader(f"🧠 Decision: {decision}")
 
+# ===============================
+# DISPLAY LEVELS
+# ===============================
+st.markdown("**Level / Zone Guidance:**")
+
+cols = st.columns(3)
+
+if decision == "BUY":
+    cols[0].metric("Buy Area", f"{buy_area[0]:.0f} - {buy_area[1]:.0f}")
+    cols[1].metric("Take Profit (TP)", f"{tp_price:.0f}")
+    cols[2].metric("Stop Loss", f"{stop_loss:.0f}")
+
+elif decision == "SELL":
+    cols[0].metric("Sell Area", f"{sell_area[0]:.0f} - {sell_area[1]:.0f}")
+    cols[1].metric("Stop Loss", f"{stop_loss:.0f}")
+    cols[2].metric("—", "-")
+
+else:  # WAIT
+    cols[0].metric("Buy Area (Target Entry)", f"{buy_area[0]:.0f} - {buy_area[1]:.0f}")
+    cols[1].metric("Stop Loss", f"{stop_loss:.0f}")
+    cols[2].metric("—", "-")
 # ===============================
 # AI CONFIDENCE
 # ===============================
