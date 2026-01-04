@@ -138,22 +138,28 @@ else:  # WAIT
 # ===============================
 st.divider()
 st.subheader("🤖 AI Confidence")
-
 conf = ai_confidence(df)
 st.progress(conf)
 st.caption("AI confidence only — decision tetap rule-based")
 
 # ===============================
-# RISK MANAGEMENT
+# LEVEL / ZONES
 # ===============================
 st.divider()
-st.subheader("📉 Risk Management")
+st.subheader("📉 Level / Zone Guidance & Risk Management")
+cols = st.columns(3)
 
-stop_loss = support * 0.97
-max_lot = int(100_000_000 / price)
+if decision == "BUY":
+    cols[0].metric("Buy Area", f"{buy_area[0]:.0f} - {buy_area[1]:.0f}")
+    cols[1].metric("Take Profit (TP)", f"{tp_price:.0f}")
+    cols[2].metric("Stop Loss", f"{stop_loss:.0f}")
+elif decision == "SELL":
+    cols[0].metric("Sell Area", f"{sell_area[0]:.0f} - {sell_area[1]:.0f}")
+    cols[1].metric("Stop Loss", f"{stop_loss:.0f}")
+    cols[2].metric("—", "-")
+else:  # WAIT
+    cols[0].metric("Buy Area (Target Entry)", f"{buy_area[0]:.0f} - {buy_area[1]:.0f}")
+    cols[1].metric("Stop Loss", f"{stop_loss:.0f}")
+    cols[2].metric("—", "-")
 
-c4, c5 = st.columns(2)
-c4.metric("Stop Loss", int(stop_loss))
-c5.metric("Max Lot", max_lot)
-
-st.caption("Decision support system — bukan rekomendasi mutlak.")
+st.metric("💹 Max Lot (Realistic)", max_lot)
