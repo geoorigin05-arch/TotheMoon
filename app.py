@@ -5,12 +5,12 @@ from ai_model import ai_confidence
 import pandas as pd
 
 st.set_page_config(
-    page_title="IDX Professional Trading System v2.0",
+    page_title="IDX Professional Trading System v2.5",
     layout="wide"
 )
 
-st.title("📊 IDX Professional Trading System v2.0")
-st.caption("Top-Ranked Realistic + Trending + Grade A/B/C")
+st.title("📊 IDX Professional Trading System v2.5")
+st.caption("Top-Ranked Realistic + Trending + Grade A/B/C + Manual Modal Input")
 
 # ===============================
 # LOAD IDX UNIVERSE
@@ -30,10 +30,16 @@ mode = st.radio(
     ["🔥 Auto IDX Scan (Top 10 Ranked)", "🎯 Analisa Saham Manual"]
 )
 
+symbol = None
+modal_rp = 100_000_000  # default
+
+# ===============================
+# AUTO IDX SCAN
+# ===============================
 if mode == "🔥 Auto IDX Scan (Top 10 Ranked)":
     st.subheader("🔥 IDX Market Scan — Top 10 Realistic")
     
-    scan_df = scan_universe(IDX, limit=10)  # Top 10 saja
+    scan_df = scan_universe(IDX, limit=10)
     if scan_df.empty:
         st.warning("Tidak ada saham memenuhi kriteria")
         st.stop()
@@ -49,14 +55,16 @@ if mode == "🔥 Auto IDX Scan (Top 10 Ranked)":
         ranked["Symbol"]
     )
 
-else:  # Manual Input Mode
+# ===============================
+# MANUAL INPUT
+# ===============================
+else:
     st.subheader("🎯 Analisa Saham Manual")
-    
     symbol = st.text_input("Masukkan Kode Saham (contoh: BBCA.JK)", "BBCA.JK").upper().strip()
     modal_rp = st.number_input("💰 Modal Investasi (Rp)", value=100_000_000, step=10_000)
     refresh = st.button("🔄 Refresh Harga")
-    
-    # Fetch fresh data manual
+
+    # Fetch fresh data manual (tidak pakai cache)
     if refresh or "last_symbol" not in st.session_state or st.session_state.last_symbol != symbol:
         df = fetch_price(symbol)
         st.session_state.last_symbol = symbol
@@ -68,8 +76,15 @@ else:  # Manual Input Mode
         st.warning(f"❌ Data untuk {symbol} tidak tersedia / terlalu sedikit.")
         st.stop()
 
+# ===============================
+# SAFETY CHECK
+# ===============================
+if df is None or df.empty:
+    st.error(f"❌ Data untuk {symbol} tidak valid")
+    st.stop()
 
 last = df.iloc[-1]
+
 price = float(last["Close"])
 support = float(last["Support"])
 resistance = float(last["Resistance"])
@@ -91,12 +106,12 @@ c3.metric("Trend", trend)
 # ===============================
 # DECISION ENGINE + LEVELS + RISK
 # ===============================
-# Default
 decision = "WAIT"
 buy_area = (0, 0)
 sell_area = (0, 0)
 tp_price = None
 stop_loss = support * 0.97
+max_lot = int(modal_rp / price)  # Max lot berdasarkan modal
 
 # Rules
 if trend == "BULLISH" and rsi < 70 and price <= support * 1.08:
@@ -110,10 +125,10 @@ else:
     # WAIT → tunjukkan Buy Area
     buy_area = (support, support * 1.08)
 
-# Display Decision
+# ===============================
+# DISPLAY DECISION
+# ===============================
 st.subheader(f"🧠 Decision: {decision}")
-
-# Display Levels / Zones
 st.markdown("**Level / Zone Guidance:**")
 cols = st.columns(3)
 
@@ -121,17 +136,14 @@ if decision == "BUY":
     cols[0].metric("Buy Area", f"{buy_area[0]:.0f} - {buy_area[1]:.0f}")
     cols[1].metric("Take Profit (TP)", f"{tp_price:.0f}")
     cols[2].metric("Stop Loss", f"{stop_loss:.0f}")
-
 elif decision == "SELL":
     cols[0].metric("Sell Area", f"{sell_area[0]:.0f} - {sell_area[1]:.0f}")
     cols[1].metric("Stop Loss", f"{stop_loss:.0f}")
     cols[2].metric("—", "-")
-
 else:  # WAIT
     cols[0].metric("Buy Area (Target Entry)", f"{buy_area[0]:.0f} - {buy_area[1]:.0f}")
     cols[1].metric("Stop Loss", f"{stop_loss:.0f}")
     cols[2].metric("—", "-")
-
 
 # ===============================
 # AI CONFIDENCE
@@ -143,7 +155,7 @@ st.progress(conf)
 st.caption("AI confidence only — decision tetap rule-based")
 
 # ===============================
-# LEVEL / ZONES
+# LEVEL / ZONES + MAX LOT
 # ===============================
 st.divider()
 st.subheader("📉 Level / Zone Guidance & Risk Management")
