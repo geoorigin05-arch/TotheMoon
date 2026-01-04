@@ -15,20 +15,30 @@ def train_ai(df):
         ])
         y.append(int(df["Close"].iloc[i+5] > df["Close"].iloc[i]))
 
+    if len(X) == 0:  # <<<<< GUARD
+        return None  # atau return dummy model
+
     model = LogisticRegression()
     model.fit(X, y)
     joblib.dump(model, MODEL_FILE)
     return model
 
+
 def load_ai_model(df):
     if os.path.exists(MODEL_FILE):
         return joblib.load(MODEL_FILE)
-    return train_ai(df)
+
+    model = train_ai(df)
+    if model is None:
+        return None  # data tidak cukup
+    return model
 
 def ai_confidence(df):
     model = load_ai_model(df)
-    last = df.iloc[-1]
+    if model is None:  # <<<< tambahan guard
+        return 0.5  # confidence default
 
+    last = df.iloc[-1]
     prob = model.predict_proba([[
         last["RSI"],
         last["Close"] / last["MA50"],
