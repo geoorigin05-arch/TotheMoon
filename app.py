@@ -149,7 +149,8 @@ if atr / price < 0.01:
 # ======================================================
 # TREND HIERARCHY
 # ======================================================
-trend_bias = "BULLISH" if price > df["MA_200"].iloc[-1] else "BEARISH"
+trend_bias = "BULLISH" if price > df["MA_trend"].iloc[-1] else "BEARISH"
+
 
 # ======================================================
 # SUPPORT & RESISTANCE
