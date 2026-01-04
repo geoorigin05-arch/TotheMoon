@@ -90,7 +90,7 @@ else:
     if df is None or df.empty:
         st.warning(f"❌ Data untuk {symbol} tidak tersedia / terlalu sedikit.")
         st.stop()
-    modal_rp = 100_000_000  # default modal untuk auto
+    modal_rp = 1_000_000  # default modal untuk auto
 
 # ===============================
 # SAFETY CHECK
