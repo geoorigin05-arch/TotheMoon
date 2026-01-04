@@ -5,12 +5,12 @@ from scoring import rank_stocks
 from ai_model import ai_confidence
 
 st.set_page_config(
-    page_title="IDX Professional Trading System v2.1",
+    page_title="IDX Professional Trading System v2.3",
     layout="wide"
 )
 
-st.title("📊 IDX Professional Trading System v2.1")
-st.caption("Top-Ranked Realistic + Trending + Grade A/B/C")
+st.title("📊 IDX Professional Trading System v2.3")
+st.caption("Top-50 IDX Scan + Manual Input Stabil + AI Confidence + Level Guidance")
 
 # ===============================
 # LOAD IDX UNIVERSE
@@ -27,16 +27,22 @@ IDX = load_idx_universe()
 # ===============================
 mode = st.radio(
     "🧭 Mode Analisa",
-    ["🔥 Auto IDX Scan (Top Ranked)", "🎯 Analisa Saham Manual"]
+    ["🔥 Auto IDX Scan (Top 50 Ranked)", "🎯 Analisa Saham Manual"]
 )
 
 # ===============================
 # AUTO IDX SCAN
 # ===============================
-if mode == "🔥 Auto IDX Scan (Top Ranked)":
-    st.subheader("🔥 IDX Market Scan — Top Ranked Realistic")
+if mode == "🔥 Auto IDX Scan (Top 50 Ranked)":
+    st.subheader("🔥 IDX Market Scan — Top Ranked + Trending + Grade A/B/C")
 
-    scan_df = scan_universe(IDX, limit=50)
+    # Cache scan per hari supaya cepat
+    @st.cache_data(show_spinner=False)
+    def get_scan_df():
+        df_scan = scan_universe(IDX, limit=50)
+        return df_scan
+
+    scan_df = get_scan_df()
     if scan_df.empty:
         st.warning("Tidak ada saham memenuhi kriteria")
         st.stop()
@@ -48,6 +54,7 @@ if mode == "🔥 Auto IDX Scan (Top Ranked)":
         use_container_width=True
     )
 
+    # Pilih untuk analisa manual detail
     symbol = st.selectbox(
         "🎯 Analisa Detail Saham",
         ranked["Symbol"]
@@ -64,12 +71,10 @@ else:
         key="manual_symbol_input"
     ).upper().strip()
 
-    # Stop jika kosong
     if symbol_input == "":
         st.stop()
     symbol = symbol_input
 
-    # Modal manual input
     modal_rp = st.number_input(
         "💰 Modal Investasi (Rp)",
         min_value=10_000,
@@ -79,12 +84,29 @@ else:
     )
 
 # ===============================
-# FETCH DATA (CACHED untuk STABIL manual input)
+# FETCH DATA (CACHED PER SYMBOL UNTUK STABIL)
 # ===============================
 @st.cache_data(show_spinner=False)
 def fetch_price_cached(symbol):
     df = fetch_price(symbol)
-    return df
+    if df is None or df.empty:
+        return None
+    # Pastikan pakai Adjusted Close
+    if "Adj Close" in df.columns:
+        df["Close"] = df["Adj Close"]
+    # Hitung indikator jika belum ada
+    if "MA50" not in df.columns:
+        df["MA50"] = df["Close"].rolling(50).mean()
+    if "MA200" not in df.columns:
+        df["MA200"] = df["Close"].rolling(200).mean()
+    delta = df["Close"].diff()
+    gain = delta.clip(lower=0).rolling(14).mean()
+    loss = -delta.clip(upper=0).rolling(14).mean()
+    rs = gain / loss
+    df["RSI"] = 100 - (100 / (1 + rs))
+    df["Support"] = df["Low"].rolling(20).min()
+    df["Resistance"] = df["High"].rolling(20).max()
+    return df.dropna()
 
 df = fetch_price_cached(symbol)
 if df is None or df.empty:
@@ -121,7 +143,6 @@ tp_price = None
 stop_loss = support * 0.97
 lot_size = 100  # 1 lot = 100 saham
 
-# Rules
 if trend == "BULLISH" and rsi < 70 and price <= support * 1.08:
     decision = "BUY"
     buy_area = (support, support * 1.08)
@@ -130,15 +151,14 @@ elif rsi > 70 or price >= resistance * 0.97:
     decision = "SELL"
     sell_area = (resistance * 0.97, resistance)
 else:
-    buy_area = (support, support * 1.08)
+    buy_area = (support, support * 1.08)  # WAIT → target entry
 
-# Max lot
+# Max lot realistis
 if mode == "🎯 Analisa Saham Manual":
     max_lot = int(modal_rp / price / lot_size)
 else:
     max_lot = int(100_000_000 / price / lot_size)
 
-# Display decision
 st.subheader(f"🧠 Decision: {decision}")
 
 # ===============================
@@ -151,12 +171,12 @@ st.progress(conf)
 st.caption("AI confidence only — decision tetap rule-based")
 
 # ===============================
-# DISPLAY LEVELS / ZONES
+# LEVEL / ZONES
 # ===============================
 st.divider()
 st.subheader("📉 Level / Zone Guidance & Risk Management")
-
 cols = st.columns(3)
+
 if decision == "BUY":
     cols[0].metric("Buy Area", f"{buy_area[0]:.0f} - {buy_area[1]:.0f}")
     cols[1].metric("Take Profit (TP)", f"{tp_price:.0f}")
