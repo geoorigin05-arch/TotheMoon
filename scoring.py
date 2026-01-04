@@ -1,3 +1,5 @@
+import pandas as pd
+
 def score_stock(row):
     score = 0
 
@@ -13,7 +15,7 @@ def score_stock(row):
     score += min((row["TrendScore"] - 1) * 100, 30)
 
     # Momentum contribution
-    score += row["Momentum"] * 20  # bobot kecil tapi cukup untuk trending
+    score += row["Momentum"] * 20  # trending
 
     return round(score, 1)
 
