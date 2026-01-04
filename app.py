@@ -9,7 +9,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("📊 IDX Professional Trading System v2.5")
+st.title("📊 IDX Professional Trading System v2.5 Fixed")
 st.caption("Top-Ranked Realistic + Trending + Grade A/B/C + Manual Modal Input")
 
 # ===============================
@@ -40,7 +40,7 @@ if mode == "🔥 Auto IDX Scan (Top 10 Ranked)":
     st.subheader("🔥 IDX Market Scan — Top 10 Realistic")
     
     scan_df = scan_universe(IDX, limit=10)
-    if scan_df.empty:
+    if scan_df is None or scan_df.empty:
         st.warning("Tidak ada saham memenuhi kriteria")
         st.stop()
     
@@ -49,11 +49,14 @@ if mode == "🔥 Auto IDX Scan (Top 10 Ranked)":
         ranked[["Symbol", "Close", "RSI", "TrendScore", "Momentum", "Score", "Grade"]],
         use_container_width=True
     )
-    
+
+    # Pilih saham dari Top 10
     symbol = st.selectbox(
         "🎯 Analisa Detail Saham",
         ranked["Symbol"]
     )
+    # Fetch data auto scan tanpa cache agar fresh
+    df = fetch_price(symbol)
 
 # ===============================
 # MANUAL INPUT
@@ -72,19 +75,18 @@ else:
     else:
         df = st.session_state.get("last_df", None)
 
-    if df is None or df.empty:
-        st.warning(f"❌ Data untuk {symbol} tidak tersedia / terlalu sedikit.")
-        st.stop()
-
 # ===============================
 # SAFETY CHECK
 # ===============================
+if symbol is None:
+    st.error("Saham belum dipilih")
+    st.stop()
+
 if df is None or df.empty:
-    st.error(f"❌ Data untuk {symbol} tidak valid")
+    st.warning(f"❌ Data untuk {symbol} tidak tersedia / terlalu sedikit.")
     st.stop()
 
 last = df.iloc[-1]
-
 price = float(last["Close"])
 support = float(last["Support"])
 resistance = float(last["Resistance"])
@@ -111,9 +113,9 @@ buy_area = (0, 0)
 sell_area = (0, 0)
 tp_price = None
 stop_loss = support * 0.97
-max_lot = int(modal_rp / price)  # Max lot berdasarkan modal
+max_lot = int(modal_rp / price)
 
-# Rules
+# Rules (tetap sama seperti sebelumnya)
 if trend == "BULLISH" and rsi < 70 and price <= support * 1.08:
     decision = "BUY"
     buy_area = (support, support * 1.08)
@@ -122,7 +124,6 @@ elif rsi > 70 or price >= resistance * 0.97:
     decision = "SELL"
     sell_area = (resistance * 0.97, resistance)
 else:
-    # WAIT → tunjukkan Buy Area
     buy_area = (support, support * 1.08)
 
 # ===============================
@@ -155,23 +156,8 @@ st.progress(conf)
 st.caption("AI confidence only — decision tetap rule-based")
 
 # ===============================
-# LEVEL / ZONES + MAX LOT
+# MAX LOT
 # ===============================
 st.divider()
-st.subheader("📉 Level / Zone Guidance & Risk Management")
-cols = st.columns(3)
-
-if decision == "BUY":
-    cols[0].metric("Buy Area", f"{buy_area[0]:.0f} - {buy_area[1]:.0f}")
-    cols[1].metric("Take Profit (TP)", f"{tp_price:.0f}")
-    cols[2].metric("Stop Loss", f"{stop_loss:.0f}")
-elif decision == "SELL":
-    cols[0].metric("Sell Area", f"{sell_area[0]:.0f} - {sell_area[1]:.0f}")
-    cols[1].metric("Stop Loss", f"{stop_loss:.0f}")
-    cols[2].metric("—", "-")
-else:  # WAIT
-    cols[0].metric("Buy Area (Target Entry)", f"{buy_area[0]:.0f} - {buy_area[1]:.0f}")
-    cols[1].metric("Stop Loss", f"{stop_loss:.0f}")
-    cols[2].metric("—", "-")
-
-st.metric("💹 Max Lot (Realistic)", max_lot)
+st.subheader("💹 Max Lot (Realistic)")
+st.metric("Berdasarkan Modal", max_lot)
