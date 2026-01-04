@@ -2,13 +2,26 @@ import yfinance as yf
 import pandas as pd
 
 # ===============================
-# Fetch historical price (full year) untuk scan universe
+# Helper RSI
+# ===============================
+def compute_rsi(series, period=14):
+    delta = series.diff()
+    gain = delta.where(delta > 0, 0.0)
+    loss = -delta.where(delta < 0, 0.0)
+    avg_gain = gain.rolling(period, min_periods=1).mean()
+    avg_loss = loss.rolling(period, min_periods=1).mean()
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi.fillna(50)
+
+# ===============================
+# Fetch price lengkap (Top10 scan)
 # ===============================
 def fetch_price(symbol: str) -> pd.DataFrame:
     try:
         df = yf.download(symbol, period="1y", interval="1d", progress=False)
         if df.empty:
-            return None
+            return pd.DataFrame()
         df.reset_index(inplace=True)
         df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
         df["MA200"] = df["Close"].rolling(200, min_periods=1).mean()
@@ -18,16 +31,13 @@ def fetch_price(symbol: str) -> pd.DataFrame:
         return df
     except Exception as e:
         print("fetch_price error:", e)
-        return None
+        return pd.DataFrame()
 
 # ===============================
-# Fetch latest price (60 days) → cepat untuk manual input
+# Fetch price terbaru & ringan (Manual)
 # ===============================
 def fetch_price_latest(symbol: str) -> pd.DataFrame:
-    """
-    Fetch harga terbaru + indikator cepat (ringan) untuk manual input
-    """
-    for attempt in range(2):  # retry 2x
+    for attempt in range(2):
         try:
             df = yf.download(symbol, period="60d", interval="1d", progress=False)
             if df.empty:
@@ -41,49 +51,42 @@ def fetch_price_latest(symbol: str) -> pd.DataFrame:
             return df
         except Exception as e:
             print(f"fetch_price_latest attempt {attempt+1} error:", e)
-    return pd.DataFrame()  # fallback empty
+    # fallback dummy jika gagal
+    return pd.DataFrame([{
+        "Close": 1000,
+        "MA200": 950,
+        "RSI": 50,
+        "Support": 950,
+        "Resistance": 1050
+    }])
 
 # ===============================
-# Scan Top10 universe cepat
+# Scan universe untuk Top10
 # ===============================
-def scan_universe(universe, limit=10):
-    results = []
-    for sym in universe:
-        df = fetch_price_latest(sym)  # cepat & ringan
-        if df is None or df.empty:
+def scan_universe(symbol_list, limit=10) -> pd.DataFrame:
+    data = []
+    for symbol in symbol_list:
+        df = fetch_price_latest(symbol)
+        if df.empty:
             continue
         last = df.iloc[-1]
-        close = float(last["Close"])
-        ma200 = float(last.get("MA200", close))
+        price = float(last["Close"])
+        ma200 = float(last.get("MA200", price))
         rsi = float(last.get("RSI", 50))
-        support = float(last.get("Support", close*0.95))
-        resistance = float(last.get("Resistance", close*1.05))
-        trend_score = close / ma200 if ma200 != 0 else 1
-        momentum = close - df["Close"].iloc[-2] if len(df)>=2 else 0
-
-        results.append({
-            "Symbol": sym,
-            "Close": close,
+        support = float(last.get("Support", price*0.95))
+        resistance = float(last.get("Resistance", price*1.05))
+        trendscore = price / ma200 if ma200 > 0 else 0
+        data.append({
+            "Symbol": symbol,
+            "Close": price,
             "RSI": rsi,
-            "TrendScore": trend_score,
-            "Momentum": momentum,
+            "TrendScore": trendscore,
+            "Momentum": price - ma200,
             "Support": support,
             "Resistance": resistance
         })
-
-    df_result = pd.DataFrame(results)
-    df_result = df_result.sort_values("TrendScore", ascending=False).head(limit)
-    return df_result
-
-# ===============================
-# Helper RSI
-# ===============================
-def compute_rsi(series, period=14):
-    delta = series.diff()
-    gain = delta.where(delta>0,0.0)
-    loss = -delta.where(delta<0,0.0)
-    avg_gain = gain.rolling(period, min_periods=1).mean()
-    avg_loss = loss.rolling(period, min_periods=1).mean()
-    rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
+    df_final = pd.DataFrame(data)
+    if df_final.empty:
+        return pd.DataFrame()
+    # ambil top limit
+    return df_final.sort_values(by="TrendScore", ascending=False).head(limit)
