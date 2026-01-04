@@ -49,33 +49,41 @@ modal = st.sidebar.number_input("Modal (Rp)", value=10_000_000, step=500_000)
 risk_pct = st.sidebar.slider("Risk per Trade (%)", 1, 10, 2)
 
 # ======================================================
-# LOAD DATA (SAFE)
+# LOAD DATA (ROBUST & IDX SAFE)
 # ======================================================
 try:
     df = yf.download(
         symbol,
         period=period,
         interval="1d",
-        auto_adjust=True,
         progress=False
     )
-except Exception as e:
+except Exception:
     st.error("❌ Gagal mengambil data dari Yahoo Finance")
     st.stop()
 
 # ======================================================
-# DATA VALIDATION (CRITICAL)
+# NORMALIZE DATAFRAME (CRITICAL FIX)
 # ======================================================
-required_cols = {"Open", "High", "Low", "Close", "Volume"}
-
 if df is None or df.empty:
     st.error("❌ Data kosong. Ticker tidak valid / market libur.")
     st.stop()
 
-if not required_cols.issubset(df.columns):
-    st.error("❌ Struktur data tidak lengkap dari Yahoo Finance")
+# Jika kolom MultiIndex (sering terjadi di IDX)
+if isinstance(df.columns, pd.MultiIndex):
+    df.columns = df.columns.get_level_values(0)
+
+# Standarisasi nama kolom
+df.columns = [c.strip().title() for c in df.columns]
+
+required_cols = {"Open", "High", "Low", "Close", "Volume"}
+missing = required_cols - set(df.columns)
+
+if missing:
+    st.error(f"❌ Kolom tidak lengkap dari Yahoo Finance: {missing}")
     st.stop()
 
+df = df[["Open", "High", "Low", "Close", "Volume"]]
 df = df.dropna()
 
 if len(df) < 60:
