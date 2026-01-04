@@ -5,12 +5,12 @@ from ai_model import ai_confidence
 import pandas as pd
 
 st.set_page_config(
-    page_title="IDX Professional Trading System v2.5",
+    page_title="IDX Professional Trading System v2.6",
     layout="wide"
 )
 
-st.title("📊 IDX Professional Trading System v2.5 Fixed")
-st.caption("Top-Ranked Realistic + Trending + Grade A/B/C + Manual Modal Input")
+st.title("📊 IDX Professional Trading System v2.6")
+st.caption("Top-Ranked Realistic + Trending + Grade A/B/C + Manual Default Display")
 
 # ===============================
 # LOAD IDX UNIVERSE
@@ -27,65 +27,71 @@ IDX = load_idx_universe()
 # ===============================
 mode = st.radio(
     "🧭 Mode Analisa",
-    ["🔥 Auto IDX Scan (Top 10 Ranked)", "🎯 Analisa Saham Manual"]
+    ["🎯 Analisa Saham Manual", "🔥 Auto IDX Scan (Top 10 Ranked)"],
+    index=0  # Default = Manual
 )
 
-symbol = None
-modal_rp = 100_000_000  # default
+# ===============================
+# MANUAL INPUT (DEFAULT MODE)
+# ===============================
+if mode == "🎯 Analisa Saham Manual":
+    st.subheader("🎯 Analisa Saham Manual (Default Display)")
+
+    # Input saham & modal
+    symbol_input = st.text_input("Masukkan Kode Saham (contoh: BBCA.JK)").upper().strip()
+    modal_rp = st.number_input("💰 Modal Investasi (Rp)", value=100_000_000, step=10_000)
+    refresh = st.button("🔄 Refresh Harga")
+
+    # Fetch hanya jika user memasukkan kode saham
+    if symbol_input:
+        symbol = symbol_input
+        if refresh or "last_symbol" not in st.session_state or st.session_state.last_symbol != symbol:
+            df = fetch_price(symbol)
+            st.session_state.last_symbol = symbol
+            st.session_state.last_df = df
+        else:
+            df = st.session_state.get("last_df", None)
+
+        if df is None or df.empty:
+            st.warning(f"❌ Data untuk {symbol} tidak tersedia / terlalu sedikit.")
+            st.stop()
+    else:
+        st.info("Masukkan kode saham untuk mulai analisa.")
+        st.stop()  # Jangan lanjut sebelum input
 
 # ===============================
-# AUTO IDX SCAN
+# AUTO IDX SCAN MODE
 # ===============================
-if mode == "🔥 Auto IDX Scan (Top 10 Ranked)":
+else:
     st.subheader("🔥 IDX Market Scan — Top 10 Realistic")
-    
+
     scan_df = scan_universe(IDX, limit=10)
     if scan_df is None or scan_df.empty:
         st.warning("Tidak ada saham memenuhi kriteria")
         st.stop()
-    
+
     ranked = rank_stocks(scan_df)
     st.dataframe(
         ranked[["Symbol", "Close", "RSI", "TrendScore", "Momentum", "Score", "Grade"]],
         use_container_width=True
     )
 
-    # Pilih saham dari Top 10
     symbol = st.selectbox(
         "🎯 Analisa Detail Saham",
         ranked["Symbol"]
     )
-    # Fetch data auto scan tanpa cache agar fresh
     df = fetch_price(symbol)
-
-# ===============================
-# MANUAL INPUT
-# ===============================
-else:
-    st.subheader("🎯 Analisa Saham Manual")
-    symbol = st.text_input("Masukkan Kode Saham (contoh: BBCA.JK)", "BBCA.JK").upper().strip()
-    modal_rp = st.number_input("💰 Modal Investasi (Rp)", value=100_000_000, step=10_000)
-    refresh = st.button("🔄 Refresh Harga")
-
-    # Fetch fresh data manual (tidak pakai cache)
-    if refresh or "last_symbol" not in st.session_state or st.session_state.last_symbol != symbol:
-        df = fetch_price(symbol)
-        st.session_state.last_symbol = symbol
-        st.session_state.last_df = df
-    else:
-        df = st.session_state.get("last_df", None)
 
 # ===============================
 # SAFETY CHECK
 # ===============================
-if symbol is None:
-    st.error("Saham belum dipilih")
+if symbol is None or df is None or df.empty:
+    st.error("Data saham belum tersedia")
     st.stop()
 
-if df is None or df.empty:
-    st.warning(f"❌ Data untuk {symbol} tidak tersedia / terlalu sedikit.")
-    st.stop()
-
+# ===============================
+# EXTRACT DATA
+# ===============================
 last = df.iloc[-1]
 price = float(last["Close"])
 support = float(last["Support"])
@@ -115,7 +121,6 @@ tp_price = None
 stop_loss = support * 0.97
 max_lot = int(modal_rp / price)
 
-# Rules (tetap sama seperti sebelumnya)
 if trend == "BULLISH" and rsi < 70 and price <= support * 1.08:
     decision = "BUY"
     buy_area = (support, support * 1.08)
