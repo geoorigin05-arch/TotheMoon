@@ -1,7 +1,6 @@
 import joblib
 import os
 from sklearn.linear_model import LogisticRegression
-import numpy as np
 
 MODEL_FILE = "ai_model.pkl"
 
