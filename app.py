@@ -1,15 +1,15 @@
 import streamlit as st
+import pandas as pd
 from data_engine import scan_universe, fetch_price
 from scoring import rank_stocks
 from ai_model import ai_confidence
-import pandas as pd
 
 st.set_page_config(
-    page_title="IDX Professional Trading System v2.0",
+    page_title="IDX Professional Trading System v2.1",
     layout="wide"
 )
 
-st.title("📊 IDX Professional Trading System v2.0")
+st.title("📊 IDX Professional Trading System v2.1")
 st.caption("Top-Ranked Realistic + Trending + Grade A/B/C")
 
 # ===============================
@@ -64,7 +64,7 @@ else:
         key="manual_symbol_input"
     ).upper().strip()
 
-    # Untuk memastikan state konsisten
+    # Stop jika kosong
     if symbol_input == "":
         st.stop()
     symbol = symbol_input
@@ -79,9 +79,14 @@ else:
     )
 
 # ===============================
-# FETCH DATA
+# FETCH DATA (CACHED untuk STABIL manual input)
 # ===============================
-df = fetch_price(symbol)
+@st.cache_data(show_spinner=False)
+def fetch_price_cached(symbol):
+    df = fetch_price(symbol)
+    return df
+
+df = fetch_price_cached(symbol)
 if df is None or df.empty:
     st.error(f"❌ Data tidak cukup / saham {symbol} tidak valid")
     st.stop()
@@ -93,7 +98,6 @@ ma200 = float(last["MA200"])
 rsi = float(last["RSI"])
 support = float(last["Support"])
 resistance = float(last["Resistance"])
-
 trend = "BULLISH" if price > ma200 else "BEARISH"
 
 # ===============================
@@ -128,7 +132,7 @@ elif rsi > 70 or price >= resistance * 0.97:
 else:
     buy_area = (support, support * 1.08)
 
-# Max lot berdasarkan modal manual
+# Max lot
 if mode == "🎯 Analisa Saham Manual":
     max_lot = int(modal_rp / price / lot_size)
 else:
@@ -147,7 +151,7 @@ st.progress(conf)
 st.caption("AI confidence only — decision tetap rule-based")
 
 # ===============================
-# DISPLAY LEVELS / RISK
+# DISPLAY LEVELS / ZONES
 # ===============================
 st.divider()
 st.subheader("📉 Level / Zone Guidance & Risk Management")
@@ -157,16 +161,13 @@ if decision == "BUY":
     cols[0].metric("Buy Area", f"{buy_area[0]:.0f} - {buy_area[1]:.0f}")
     cols[1].metric("Take Profit (TP)", f"{tp_price:.0f}")
     cols[2].metric("Stop Loss", f"{stop_loss:.0f}")
-
 elif decision == "SELL":
     cols[0].metric("Sell Area", f"{sell_area[0]:.0f} - {sell_area[1]:.0f}")
     cols[1].metric("Stop Loss", f"{stop_loss:.0f}")
     cols[2].metric("—", "-")
-
 else:  # WAIT
     cols[0].metric("Buy Area (Target Entry)", f"{buy_area[0]:.0f} - {buy_area[1]:.0f}")
     cols[1].metric("Stop Loss", f"{stop_loss:.0f}")
     cols[2].metric("—", "-")
 
-# Max lot
 st.metric("💹 Max Lot (Realistic)", max_lot)
