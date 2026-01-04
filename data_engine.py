@@ -24,20 +24,24 @@ def fetch_price(symbol: str) -> pd.DataFrame:
 # Fetch latest price (60 days) → cepat untuk manual input
 # ===============================
 def fetch_price_latest(symbol: str) -> pd.DataFrame:
-    try:
-        df = yf.download(symbol, period="60d", interval="1d", progress=False)
-        if df.empty:
-            return None
-        df.reset_index(inplace=True)
-        df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
-        df["MA200"] = df["Close"].rolling(200, min_periods=1).mean()
-        df["RSI"] = compute_rsi(df["Close"])
-        df["Support"] = df["Close"].rolling(20, min_periods=1).min()
-        df["Resistance"] = df["Close"].rolling(20, min_periods=1).max()
-        return df
-    except Exception as e:
-        print("fetch_price_latest error:", e)
-        return None
+    """
+    Fetch harga terbaru + indikator cepat (ringan) untuk manual input
+    """
+    for attempt in range(2):  # retry 2x
+        try:
+            df = yf.download(symbol, period="60d", interval="1d", progress=False)
+            if df.empty:
+                continue
+            df.reset_index(inplace=True)
+            df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
+            df["MA200"] = df["Close"].rolling(200, min_periods=1).mean()
+            df["RSI"] = compute_rsi(df["Close"])
+            df["Support"] = df["Close"].rolling(20, min_periods=1).min()
+            df["Resistance"] = df["Close"].rolling(20, min_periods=1).max()
+            return df
+        except Exception as e:
+            print(f"fetch_price_latest attempt {attempt+1} error:", e)
+    return pd.DataFrame()  # fallback empty
 
 # ===============================
 # Scan Top10 universe cepat
