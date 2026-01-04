@@ -1,3 +1,5 @@
+import pandas as pd
+
 def score_stock(row):
     # Ambil nilai RSI, TrendScore, Momentum → aman
     rsi = row.get("RSI", 50)
