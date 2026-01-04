@@ -1,18 +1,13 @@
-import pandas as pd
-
 def score_stock(row):
-    # Safety: pastikan scalar
+    # Ambil RSI, TrendScore, Momentum → pastikan scalar
     rsi = row.get("RSI", 50)
-    if rsi is None or pd.isna(rsi):
-        rsi = 50
-
     trend_score = row.get("TrendScore", 0)
-    if trend_score is None or pd.isna(trend_score):
-        trend_score = 0
-
     momentum = row.get("Momentum", 0)
-    if momentum is None or pd.isna(momentum):
-        momentum = 0
+
+    # Jika masih NaN / Series → ganti default
+    rsi = float(rsi) if pd.notna(rsi) else 50
+    trend_score = float(trend_score) if pd.notna(trend_score) else 0
+    momentum = float(momentum) if pd.notna(momentum) else 0
 
     score = 0
     if rsi < 65:
