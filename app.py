@@ -157,13 +157,27 @@ st.subheader("🧠 Alasan Keputusan")
 
 if decision == "BUY":
     for r in buy:
-        st.success(r)
+        st.success("✅ " + r)
+
 elif decision == "SELL":
     for r in sell:
-        st.error(r)
-else:
-    for r in wait:
-        st.info(r)
+        st.error("❌ " + r)
+
+else:  # WAIT
+    if buy:
+        st.info("🟡 Sinyal positif:")
+        for r in buy:
+            st.info("• " + r)
+
+    if sell:
+        st.warning("⚠️ Risiko / penahan entry:")
+        for r in sell:
+            st.warning("• " + r)
+
+    if wait:
+        st.info("⏳ Pertimbangan tambahan:")
+        for r in wait:
+            st.info("• " + r)
 
 # ======================================================
 # RISK MANAGEMENT
