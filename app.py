@@ -4,35 +4,35 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import pytz
-import os
-
-from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
-from telegram import Bot
-from dotenv import load_dotenv
-
-# ======================================================
-# ENV & TELEGRAM
-# ======================================================
-load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
-bot = Bot(token=BOT_TOKEN) if BOT_TOKEN else None
 
 # ======================================================
 # PAGE CONFIG
 # ======================================================
-st.set_page_config(page_title="Professional Stock System", layout="centered")
-st.title("📊 Professional Stock Decision System")
-st.caption("IDX • Multi-Factor • Risk Managed")
+st.set_page_config(page_title="Professional Trading System", layout="centered")
+
+st.title("📊 Professional Trading Decision System")
+st.caption("Disiplin • Risk Management • Data Driven")
+
+# ======================================================
+# TOP 3 POTENTIAL STOCKS (STATIC SAFE)
+# ======================================================
+st.markdown("### 🔥 Saham Potensial (Likuid & Data Stabil)")
+st.markdown("""
+- **BBCA.JK** → Tren naik stabil, risiko rendah  
+- **BRIS.JK** → Momentum kuat, cocok swing  
+- **TLKM.JK** → Support kuat, defensive  
+
+_(Berdasarkan struktur tren & likuiditas IDX)_
+""")
+
+st.divider()
 
 # ======================================================
 # SIDEBAR
 # ======================================================
 st.sidebar.header("⚙️ Trading Parameters")
-symbol = st.sidebar.text_input("Kode Saham IDX (.JK)", "BBCA.JK")
+symbol = st.sidebar.text_input("Kode Saham IDX", "BBCA.JK")
 period = st.sidebar.selectbox("Periode Data", ["3mo", "6mo", "1y"], index=1)
-mode = st.sidebar.selectbox("Mode Trading", ["Swing", "Scalping"])
 modal = st.sidebar.number_input("Modal (Rp)", value=10_000_000, step=500_000)
 risk_pct = st.sidebar.slider("Risk per Trade (%)", 1, 10, 2)
 
@@ -42,17 +42,15 @@ risk_pct = st.sidebar.slider("Risk per Trade (%)", 1, 10, 2)
 df = yf.download(symbol, period=period, interval="1d", auto_adjust=True)
 
 if df.empty or len(df) < 30:
-    st.error("❌ Data tidak cukup / gagal diambil dari Yahoo Finance")
+    st.error("❌ Data tidak cukup")
     st.stop()
 
 # ======================================================
 # INDICATORS
 # ======================================================
-fast = 9 if mode == "Scalping" else 20
-slow = 20 if mode == "Scalping" else 50
-
-df["MA_fast"] = df["Close"].rolling(fast).mean()
-df["MA_slow"] = df["Close"].rolling(slow).mean()
+df["MA_fast"] = df["Close"].rolling(20).mean()
+df["MA_slow"] = df["Close"].rolling(50).mean()
+df["MA_trend"] = df["Close"].rolling(100).mean()
 
 delta = df["Close"].diff()
 gain = delta.clip(lower=0)
@@ -65,128 +63,96 @@ ema26 = df["Close"].ewm(span=26).mean()
 df["MACD"] = ema12 - ema26
 df["Signal"] = df["MACD"].ewm(span=9).mean()
 
-# ======================================================
-# ADAPTIVE TREND MA
-# ======================================================
-trend_len = 200 if len(df) >= 200 else 100 if len(df) >= 100 else 50
-df["MA_trend"] = df["Close"].rolling(trend_len).mean()
-
 df.dropna(inplace=True)
-if df.empty:
-    st.error("❌ Data habis setelah perhitungan indikator")
-    st.stop()
 
 # ======================================================
-# SCALAR VALUES (ANTI ERROR)
+# SCALAR
 # ======================================================
 price = float(df["Close"].iloc[-1])
+ma_fast = float(df["MA_fast"].iloc[-1])
+ma_slow = float(df["MA_slow"].iloc[-1])
+ma_trend = float(df["MA_trend"].iloc[-1])
 rsi = float(df["RSI"].iloc[-1])
 macd = float(df["MACD"].iloc[-1])
 signal = float(df["Signal"].iloc[-1])
-ma_fast = float(df["MA_fast"].iloc[-1])
-trend_ma = float(df["MA_trend"].iloc[-1])
 
-trend_bias = "BULLISH" if price > trend_ma else "BEARISH"
-
-# ======================================================
-# SUPPORT & RESISTANCE (PASTI SCALAR)
-# ======================================================
 support = float(df["Low"].rolling(20).min().iloc[-1])
 resistance = float(df["High"].rolling(20).max().iloc[-1])
 
 # ======================================================
-# ENTRY ZONE (VALIDASI NAN)
+# SCORING 12 POINT SYSTEM
 # ======================================================
-buy_zone_low = support * 1.02 if not np.isnan(support) else np.nan
-buy_zone_high = ma_fast if not np.isnan(ma_fast) else np.nan
-sell_zone = resistance * 0.98 if not np.isnan(resistance) else np.nan
+reasons_buy = []
+reasons_sell = []
+reasons_wait = []
 
-# ======================================================
-# SCORING
-# ======================================================
-score = 0
-score += price > ma_fast
-score += macd > signal
-score += rsi < 70
-score += trend_bias == "BULLISH"
+if price > ma_trend:
+    reasons_buy.append("Harga di atas MA_trend (tren sehat)")
+else:
+    reasons_wait.append("Harga di bawah MA_trend")
 
-# ======================================================
-# AI MODEL (OPTIONAL)
-# ======================================================
-ai_prob = "-"
-if len(df) >= 60:
-    df["Target"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
-    X = df[["RSI", "MACD", "MA_fast", "MA_slow"]]
-    y = df["Target"]
+if ma_fast > ma_slow:
+    reasons_buy.append("MA_fast > MA_slow (momentum naik)")
+else:
+    reasons_wait.append("Momentum belum kuat")
 
-    scaler = StandardScaler()
-    Xs = scaler.fit_transform(X)
+if macd > signal:
+    reasons_buy.append("MACD bullish")
+else:
+    reasons_sell.append("MACD melemah")
 
-    model = LogisticRegression(max_iter=300)
-    model.fit(Xs[:-1], y[:-1])
+if 40 <= rsi <= 65:
+    reasons_buy.append("RSI sehat")
+elif rsi > 70:
+    reasons_sell.append("RSI overbought")
+else:
+    reasons_wait.append("RSI lemah")
 
-    ai_prob = float(model.predict_proba(
-        scaler.transform([X.iloc[-1]])
-    )[0][1])
+risk = price - support
+reward = resistance - price
+rr = reward / risk if risk > 0 else 0
 
-    if ai_prob > 0.6:
-        score += 1
-    elif ai_prob < 0.4:
-        score -= 1
+if rr >= 1.5:
+    reasons_buy.append(f"Risk/Reward layak ({rr:.2f}R)")
+else:
+    reasons_wait.append(f"RR kurang menarik ({rr:.2f}R)")
 
 # ======================================================
 # DECISION
 # ======================================================
-confidence = "🟢 HIGH" if score >= 4 else "🟡 MEDIUM" if score >= 2 else "🔴 LOW"
-decision = "NO TRADE" if confidence == "🔴 LOW" else "BUY" if score >= 4 else "WAIT"
+score = len(reasons_buy)
+
+if score >= 4:
+    decision = "BUY"
+    confidence = "🟢 HIGH"
+elif score >= 2:
+    decision = "WAIT"
+    confidence = "🟡 MEDIUM"
+else:
+    decision = "NO TRADE"
+    confidence = "🔴 LOW"
 
 # ======================================================
-# RISK MANAGEMENT
+# UI OUTPUT
 # ======================================================
-risk_amount = modal * (risk_pct / 100)
-stop_loss = support
-risk_per_share = price - stop_loss
-
-reward = sell_zone - price if sell_zone > price else 0
-rr_ratio = reward / risk_per_share if risk_per_share > 0 and reward > 0 else 0
-
-max_lot = int(risk_amount / (risk_per_share * 100)) if risk_per_share > 0 else 0
-
-# ======================================================
-# SAFE FORMATTER
-# ======================================================
-def safe_price(x):
-    return "-" if pd.isna(x) or np.isinf(x) else f"{int(x):,}"
-
-# ======================================================
-# UI
-# ======================================================
-st.divider()
 st.subheader("📊 Market Snapshot")
-
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Harga", safe_price(price))
-c2.metric("RSI", f"{rsi:.1f}")
-c3.metric("Trend", trend_bias)
-c4.metric("Score", score)
-
-st.markdown(f"### 📌 Decision: **{decision}**")
-st.markdown(f"Confidence: **{confidence}**")
-st.markdown(f"Risk/Reward: **{rr_ratio:.2f}R**")
+st.metric("Harga", f"{price:,.0f}")
+st.metric("Decision", decision)
+st.metric("Confidence", confidence)
+st.metric("Risk/Reward", f"{rr:.2f}R")
 
 st.divider()
-st.subheader("📍 Entry Zone")
 
-z1, z2 = st.columns(2)
-z1.success(f"🟢 BUY ZONE\n{safe_price(buy_zone_low)} – {safe_price(buy_zone_high)}")
-z2.error(f"🔴 SELL ZONE\n{safe_price(sell_zone)}")
+st.subheader("✅ Alasan BUY")
+for r in reasons_buy:
+    st.success(r)
 
-st.divider()
-st.subheader("📌 Risk Management")
+st.subheader("⚠️ Alasan WAIT")
+for r in reasons_wait:
+    st.warning(r)
 
-r1, r2, r3 = st.columns(3)
-r1.metric("Risk Amount", f"Rp {risk_amount:,.0f}")
-r2.metric("Stop Loss", safe_price(stop_loss))
-r3.metric("Max Lot", f"{max_lot:,}")
+st.subheader("❌ Alasan SELL")
+for r in reasons_sell:
+    st.error(r)
 
-st.caption("📌 NO TRADE adalah kondisi profesional. Disiplin > FOMO.")
+st.caption("📌 Sistem ini membantu disiplin, bukan menjamin profit.")
