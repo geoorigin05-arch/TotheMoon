@@ -27,51 +27,47 @@ IDX = load_idx_universe()
 # ===============================
 mode = st.radio(
     "🧭 Mode Analisa",
-    ["🔥 Auto IDX Scan (Top Ranked)", "🎯 Analisa Saham Manual"]
+    ["🔥 Auto IDX Scan (Top 10 Ranked)", "🎯 Analisa Saham Manual"]
 )
 
-# ===============================
-# AUTO IDX SCAN
-# ===============================
-if mode == "🔥 Auto IDX Scan (Top Ranked)":
-    st.subheader("🔥 IDX Market Scan — Top Ranked Realistic")
-
-    scan_df = scan_universe(IDX, limit=50)
+if mode == "🔥 Auto IDX Scan (Top 10 Ranked)":
+    st.subheader("🔥 IDX Market Scan — Top 10 Realistic")
+    
+    scan_df = scan_universe(IDX, limit=10)  # Top 10 saja
     if scan_df.empty:
         st.warning("Tidak ada saham memenuhi kriteria")
         st.stop()
-
+    
     ranked = rank_stocks(scan_df)
-
     st.dataframe(
         ranked[["Symbol", "Close", "RSI", "TrendScore", "Momentum", "Score", "Grade"]],
         use_container_width=True
     )
-
+    
     symbol = st.selectbox(
         "🎯 Analisa Detail Saham",
         ranked["Symbol"]
     )
 
-# ===============================
-# MANUAL INPUT
-# ===============================
-symbol = st.text_input("🎯 Masukkan Kode Saham (contoh: BBCA.JK)", "BBCA.JK").upper().strip()
-modal_rp = st.number_input("💰 Modal Investasi (Rp)", value=100_000_000, step=10_000)
+else:  # Manual Input Mode
+    st.subheader("🎯 Analisa Saham Manual")
+    
+    symbol = st.text_input("Masukkan Kode Saham (contoh: BBCA.JK)", "BBCA.JK").upper().strip()
+    modal_rp = st.number_input("💰 Modal Investasi (Rp)", value=100_000_000, step=10_000)
+    refresh = st.button("🔄 Refresh Harga")
+    
+    # Fetch fresh data manual
+    if refresh or "last_symbol" not in st.session_state or st.session_state.last_symbol != symbol:
+        df = fetch_price(symbol)
+        st.session_state.last_symbol = symbol
+        st.session_state.last_df = df
+    else:
+        df = st.session_state.get("last_df", None)
 
-refresh = st.button("🔄 Refresh Harga Manual")
+    if df is None or df.empty:
+        st.warning(f"❌ Data untuk {symbol} tidak tersedia / terlalu sedikit.")
+        st.stop()
 
-# Fetch data manual → tanpa cache
-if refresh or "last_symbol" not in st.session_state or st.session_state.last_symbol != symbol:
-    df = fetch_price(symbol)
-    st.session_state.last_symbol = symbol
-    st.session_state.last_df = df
-else:
-    df = st.session_state.get("last_df", None)
-
-if df is None or df.empty:
-    st.warning(f"❌ Data untuk {symbol} tidak tersedia / terlalu sedikit.")
-    st.stop()
 
 last = df.iloc[-1]
 price = float(last["Close"])
