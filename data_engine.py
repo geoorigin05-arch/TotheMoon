@@ -53,22 +53,27 @@ def fetch_price_latest(symbol: str) -> pd.DataFrame:
 # ===============================
 # Scan Top N saham
 # ===============================
-def scan_universe(symbol_list, limit=10):
-    result = []
-    for sym in symbol_list[:limit]:
+def scan_universe(universe, limit=10):
+    results = []
+    for sym in universe:
         df = fetch_price(sym)
         if df is None or df.empty:
             continue
         last = df.iloc[-1]
-        if pd.isna(last["MA200"]):
-            continue
-        result.append({
+
+        # Aman cek MA200
+        ma200 = last.get("MA200", None)
+        if ma200 is None or pd.isna(ma200) or ma200 == 0:
+            trend_score = 0
+        else:
+            trend_score = last["Close"] / ma200
+
+        results.append({
             "Symbol": sym,
             "Close": last["Close"],
-            "RSI": last["RSI"],
-            "TrendScore": last["Close"]/last["MA200"],
-            "Momentum": last["Close"]-df["Close"].iloc[-5] if len(df)>=5 else 0,
-            "Score": 0,  # placeholder
-            "Grade": "A"  # placeholder
+            "RSI": last.get("RSI", 50),
+            "TrendScore": trend_score,
+            "Momentum": last.get("Close",0) - last.get("Close",0),  # placeholder
         })
-    return pd.DataFrame(result)
+    df_results = pd.DataFrame(results)
+    return df_results.head(limit)
